@@ -89,6 +89,7 @@ async function chargerSolde() {
     $("solde").textContent = solde;
   } catch (e) {
     $("solde").textContent = "?";
+    $("alerte").textContent = "Connexion impossible : " + (e.code || e.message);
   }
 }
 
@@ -109,7 +110,7 @@ $("btn-creer").addEventListener("click", function () {
   codeCourant = nouveauCode($("round").value, indexMise);
   $("code").textContent = codeCourant;
   $("zone-code").hidden = false;
-  dire("Défi créé (mise : " + texteMise(m) + "). Envoie le code, puis touche Commencer.");
+  dire("Défi créé (mise : " + texteMise(m) + "). Donne le code à ton ami, puis touche Commencer.");
 });
 
 $("btn-wa").addEventListener("click", function () {
@@ -118,7 +119,14 @@ $("btn-wa").addEventListener("click", function () {
   const texte =
     "⚔️ Je te défie sur Ligue Bonogo ! Mise : " + texteMise(info.mise) +
     "\nCode : " + codeCourant + "\n" + lienDefi(codeCourant);
-  window.open("https://wa.me/?text=" + encodeURIComponent(texte), "_blank");
+  if (navigator.share) {
+    // Le partage du téléphone (WhatsApp, SMS…) est plus fiable qu'un lien direct
+    navigator.share({ text: texte }).catch(function () {
+      // partage annulé
+    });
+  } else {
+    window.location.href = "https://wa.me/?text=" + encodeURIComponent(texte);
+  }
 });
 
 $("btn-copier").addEventListener("click", function () {
