@@ -10,6 +10,7 @@ import { auth, db } from "./firebase.js";
 import { ROUNDS } from "./rounds.js";
 import { calculer, planning } from "./duelmoteur.js";
 import { initHorloge, maintenant } from "./horloge.js";
+import { Sons } from "./sons.js";
 
 const params = new URLSearchParams(window.location.search);
 const matchId = params.get("m");
@@ -35,6 +36,10 @@ let paye = false;
 let payeEnCours = false;
 let regleEnCours = false;
 let resumeMise = "";
+let dernierTic = "";
+let sonsJoues = {};
+let departJoue = false;
+let finSonJoue = false;
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -122,6 +127,7 @@ function majBoutons(q, c, bloque, revele) {
 async function envoyer(i, k) {
   if (envoyees[i] !== undefined || maReponse(i) !== null) return;
   envoyees[i] = k;
+  Sons.clic();
   majBoutons(round.questions[i], k, false, false);
   try {
     // L'heure du clic est un nombre fixe : les deux écrans lisent la même valeur
@@ -147,7 +153,13 @@ function montrerQuestion(i, q) {
 // Pendant la question, l'écran ne réagit pas à ce que fait l'adversaire
 function phaseQuestion(i, q, p, now) {
   montrerQuestion(i, q);
-  $("chrono").textContent = "⏱ " + Math.ceil((p.fin - now) / 1000) + " s";
+  const reste = Math.ceil((p.fin - now) / 1000);
+  $("chrono").textContent = "⏱ " + reste + " s";
+  const cleTic = i + "-" + reste;
+  if (reste <= 5 && reste > 0 && dernierTic !== cleTic) {
+    dernierTic = cleTic;
+    Sons.tic();
+  }
   const c = maReponse(i);
   majBoutons(q, c, false, false);
   $("info").textContent = c !== null ? "Réponse envoyée ✓\nRésultat à la fin du chrono" : "";
@@ -170,6 +182,12 @@ function phaseResultat(i, q, p, calc, now) {
   let verdict = "⚪ Question annulée";
   if (res && res.gagnant === slot) verdict = "🟩 Vert pour toi !";
   else if (res && res.gagnant === adv) verdict = "🟥 Rouge pour toi";
+
+  if (!sonsJoues[i]) {
+    sonsJoues[i] = true;
+    if (res && res.gagnant === slot) Sons.bon();
+    else if (res && res.gagnant === adv) Sons.faux();
+  }
 
   const cAdv = res ? (slot === 1 ? res.c2 : res.c1) : null;
   const txtAdv = cAdv !== null ? q.choix[cAdv] : "pas de réponse valide";
@@ -220,6 +238,7 @@ async function regler(vMoi, vAdv) {
       maj["joueurs/" + uid + "/pieces"] = solde + gain;
       maj["duels/" + matchId + "/reclame/" + uid] = true;
       await update(ref(db), maj);
+      Sons.piece();
     }
     if (vMoi < vAdv) resumeMise = "Tu perds " + mise + " 🪙";
     else if (vMoi === vAdv) resumeMise = "Égalité : mise remboursée";
@@ -242,6 +261,12 @@ function finDuel(calc) {
   if (vMoi > vAdv) titre = "🏆 Victoire !";
   if (vMoi < vAdv) titre = "Défaite";
   $("fin-titre").textContent = titre;
+
+  if (!finSonJoue) {
+    finSonJoue = true;
+    if (vMoi > vAdv) Sons.victoire();
+    else if (vMoi < vAdv) Sons.defaite();
+  }
 
   regler(vMoi, vAdv);
 
@@ -273,8 +298,18 @@ function afficher() {
   majScore(calc);
 
   if (now < plan[0].debut) {
-    etat("Début dans " + Math.ceil((plan[0].debut - now) / 1000) + " s");
+    const reste = Math.ceil((plan[0].debut - now) / 1000);
+    if (reste <= 3 && dernierTic !== "d" + reste) {
+      dernierTic = "d" + reste;
+      Sons.tic();
+    }
+    etat("Début dans " + reste + " s");
     return;
+  }
+
+  if (!departJoue) {
+    departJoue = true;
+    Sons.depart();
   }
 
   const n = round.questions.length;
