@@ -1,1 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Duel</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="duel.css">
+</head>
+<body>
+<div class="cadre">
 
+  <div class="tableau">
+    <div class="cote moi">
+      <span class="etiq">Toi</span>
+      <b id="pts-moi">0</b>
+      <span id="marques-moi" class="marques"></span>
+    </div>
+    <div class="centre-tab">
+      <span id="chrono" class="chrono"></span>
+      <span id="mise-info" class="mise-info"></span>
+    </div>
+    <div class="cote adv">
+      <span class="etiq">Adversaire</span>
+      <b id="pts-adv">0</b>
+      <span id="marques-adv" class="marques"></span>
+    </div>
+  </div>
+
+  <p id="statut" class="statut"></p>
+
+  <div id="zone-question" hidden>
+    <p id="numero" class="info"></p>
+    <h2 id="question"></h2>
+    <div id="choix"></div>
+    <p id="info" class="info"></p>
+  </div>
+
+  <div id="zone-fin" class="fin" hidden>
+    <h2 id="fin-titre"></h2>
+    <p id="fin-detail" class="info"></p>
+    <a class="btn jaune" href="accueil.html">Retour à l’accueil</a>
+  </div>
+
+  <p id="erreur" class="err"></p>
+
+</div>
+<script type="module" src="duel.js"></script>
+</body>
+      </html>
