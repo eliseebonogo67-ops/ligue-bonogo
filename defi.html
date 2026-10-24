@@ -1,1 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Défier un ami</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .retour {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900;
+  }
+  .bloc {
+    margin: 46px auto 0;
+  }
+  select,
+  input {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    margin-bottom: 16px;
+    border-radius: 14px;
+    border: 3px solid var(--or);
+    background: #0b1250;
+    color: #fff;
+    font-family: inherit;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  input {
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 6px;
+    font-size: 24px;
+  }
+  .code-grand {
+    margin: 6px 0 14px;
+    padding: 12px;
+    border-radius: 16px;
+    border: 2px dashed var(--or);
+    background: rgba(0, 0, 20, 0.5);
+    text-align: center;
+    font-size: 38px;
+    font-weight: 900;
+    letter-spacing: 6px;
+    color: #ffd54a;
+  }
+  .pile .btn {
+    margin-top: 18px;
+  }
+  .centre {
+    text-align: center;
+    color: var(--texte-doux);
+    font-weight: 700;
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+<div class="ecran">
 
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <div class="pieces"><span class="piece">B</span><b id="solde">…</b></div>
+    <span style="width: 62px;"></span>
+  </header>
+
+  <section class="popup bloc">
+    <div class="ruban">CRÉER UN DÉFI</div>
+    <select id="round"></select>
+    <select id="mise">
+      <option value="0">Sans mise</option>
+      <option value="1">Mise : 5 pièces</option>
+      <option value="2">Mise : 10 pièces</option>
+    </select>
+    <button id="btn-creer" class="btn jaune"><span class="ic">⚔️</span>Créer le défi</button>
+
+    <div id="zone-code" class="pile" hidden>
+      <p class="centre">Envoie ce code à ton ami :</p>
+      <div id="code" class="code-grand"></div>
+      <button id="btn-wa" class="btn vert"><span class="ic">📲</span>Envoyer par WhatsApp</button>
+      <button id="btn-copier" class="btn bleu"><span class="ic">📋</span>Copier le lien</button>
+      <button id="btn-commencer" class="btn jaune"><span class="ic">▶️</span>Commencer</button>
+    </div>
+  </section>
+
+  <section class="popup bloc">
+    <div class="ruban">REJOINDRE</div>
+    <input id="saisie" maxlength="6" placeholder="CODE" autocomplete="off">
+    <button id="btn-rejoindre" class="btn vert">Rejoindre le défi</button>
+  </section>
+
+  <p id="msg" class="message"></p>
+  <p class="message">Chaque joueur paie la mise au début du match. Le gagnant récupère les deux mises, égalité = remboursement.</p>
+
+</div>
+<script type="module" src="defi.js"></script>
+</body>
+  </html>
