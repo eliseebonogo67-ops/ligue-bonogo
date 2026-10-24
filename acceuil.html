@@ -1,1 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Accueil</title>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div class="ecran">
 
+  <header class="haut">
+    <div class="avatar">🧑‍🎓</div>
+    <div class="pieces"><span class="piece">B</span><b id="solde">…</b></div>
+    <button class="icone" aria-label="Notifications">🔔<i class="point"></i></button>
+  </header>
+
+  <div class="grade">
+    <span class="badge">🛡️</span>
+    <div class="jauge"><div class="jauge-plein" style="width: 35%;"></div></div>
+    <span class="badge">⭐</span>
+  </div>
+  <p class="xp">70 / 200 XP</p>
+
+  <div class="rangee">
+    <div class="lib"><button class="icone">🛍️</button>Boutique</div>
+    <div class="lib"><button class="icone">🏅</button>Classement</div>
+  </div>
+  <div class="rangee" style="margin-top: 18px;">
+    <div class="lib"><button class="icone">🎖️</button>Palmarès</div>
+    <div class="lib"><button class="icone">🎁<i class="point"></i></button>Défi du jour</div>
+  </div>
+
+  <nav class="menu">
+    <a class="btn jaune" href="salon.html"><span class="ic">🏆</span>Compétitions</a>
+    <a class="btn bleu" href="defi.html"><span class="ic">⚔️</span>Défier un ami</a>
+    <a class="btn vert" href="index.html"><span class="ic">📚</span>Entraînement</a>
+    <button id="btn-test" class="btn bleu" style="font-size: 16px; padding: 12px;">🎁 +50 pièces (test)</button>
+  </nav>
+  <p id="msg-test" class="message"></p>
+
+</div>
+
+<script type="module">
+import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { auth, db } from "./firebase.js";
+
+const soldeEl = document.getElementById("solde");
+const msg = document.getElementById("msg-test");
+let uid = null;
+
+async function lireSolde() {
+  const snap = await get(ref(db, "joueurs/" + uid + "/pieces"));
+  soldeEl.textContent = snap.exists() ? snap.val() : 0;
+}
+
+async function demarrer() {
+  try {
+    const cred = await signInAnonymously(auth);
+    uid = cred.user.uid;
+    await lireSolde();
+  } catch (e) {
+    soldeEl.textContent = "?";
+    msg.textContent = "Erreur : " + (e.code || e.message);
+  }
+}
+
+document.getElementById("btn-test").addEventListener("click", async function () {
+  if (!uid) return;
+  try {
+    const base = "joueurs/" + uid + "/";
+    const snap = await get(ref(db, base + "pieces"));
+    if (!snap.exists()) {
+      const m1 = {};
+      m1[base + "pieces"] = 0;
+      m1[base + "creeLe"] = Date.now();
+      await update(ref(db), m1);
+    }
+    const actuel = snap.exists() ? snap.val() : 0;
+    const m2 = {};
+    m2[base + "pieces"] = actuel + 50;
+    await update(ref(db), m2);
+    await lireSolde();
+    msg.textContent = "+50 pièces de test ajoutées.";
+  } catch (e) {
+    msg.textContent = "Erreur : " + (e.code || e.message);
+  }
+});
+
+demarrer();
+</script>
+</body>
+      </html>
