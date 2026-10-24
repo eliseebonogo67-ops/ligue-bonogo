@@ -1,1 +1,257 @@
+.retour {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 900;
+}
 
+.espace {
+  width: 62px;
+}
+
+.bloc {
+  margin: 46px auto 0;
+}
+
+label {
+  display: block;
+  margin: 0 0 6px 4px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--texte-doux);
+}
+
+select {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  border: 3px solid var(--or);
+  background: #0b1250;
+  color: #fff;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.resume {
+  text-align: center;
+  color: #ffd54a;
+  font-weight: 800;
+  margin: 0 0 14px;
+}
+
+.vide {
+  text-align: center;
+  color: var(--texte-doux);
+  font-size: 14px;
+  margin: 6px 0;
+}
+
+.carte-salon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  margin-top: 12px;
+  border-radius: 16px;
+  border: 2px solid var(--or);
+  background: linear-gradient(#2a3db5, #17238a);
+}
+
+.carte-salon .texte b {
+  display: block;
+  font-size: 16px;
+}
+
+.carte-salon .texte span {
+  font-size: 12px;
+  color: #cfd6ff;
+}
+
+.carte-salon .btn {
+  flex: none;
+  width: auto;
+  padding: 10px 16px;
+  font-size: 15px;
+}
+
+.cagnotte {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 2px solid var(--bord);
+  background: rgba(0, 0, 20, 0.45);
+  font-weight: 800;
+}
+
+.cagnotte span {
+  font-size: 12px;
+  color: var(--texte-doux);
+}
+
+.cagnotte b {
+  font-size: 24px;
+  color: #ffd54a;
+}
+
+.titre-manche {
+  margin: 14px 0 8px;
+  text-align: center;
+  font-weight: 900;
+}
+
+.classement {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.joueur {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  border: 2px solid var(--bord);
+  background: rgba(0, 0, 25, 0.5);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.joueur b {
+  font-size: 20px;
+  color: #ffd54a;
+}
+
+.joueur.moi {
+  border-color: #7be046;
+}
+
+.joueur.elimine {
+  opacity: 0.45;
+}
+
+.statut {
+  margin: 30px 8px 14px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 900;
+  color: #ffd54a;
+}
+
+.liste-attente {
+  margin: 0 0 18px;
+  text-align: center;
+  color: #cfd6ff;
+}
+
+.ligne-q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+}
+
+.chrono {
+  padding: 4px 12px;
+  border-radius: 12px;
+  border: 2px solid var(--or);
+  background: rgba(0, 0, 20, 0.5);
+  color: #ffd54a;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.chrono:empty {
+  display: none;
+}
+
+#question {
+  margin: 10px 0 14px;
+  font-size: 19px;
+  line-height: 1.3;
+}
+
+.info {
+  margin: 8px 0;
+  color: var(--texte-doux);
+  font-size: 13px;
+  white-space: pre-line;
+}
+
+#choix button {
+  display: block;
+  width: 100%;
+  margin: 10px 0;
+  padding: 14px;
+  border-radius: 14px;
+  border: 2px solid #4a58c0;
+  background: linear-gradient(#2a3db5, #17238a);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.2), 0 4px 0 #0a1060;
+  color: #fff;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+#choix button:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.2), 0 1px 0 #0a1060;
+}
+
+#choix button:disabled {
+  color: #fff;
+  cursor: default;
+}
+
+#choix button:disabled:not(.choisi):not(.juste):not(.faux) {
+  opacity: 0.7;
+}
+
+#choix button.choisi {
+  border-color: #9fdcff;
+  background: linear-gradient(#4cc3ff, #0a7cf0);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), 0 4px 0 #0a4fa3;
+}
+
+#choix button.juste {
+  border-color: #b6f58f;
+  background: linear-gradient(#7be046, #2c9e12);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), 0 4px 0 #1b6a0a;
+}
+
+#choix button.faux {
+  border-color: #ffb3ad;
+  background: linear-gradient(#ff6b60, #c8160c);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.3), 0 4px 0 #7a0b05;
+}
+
+.fin {
+  padding-top: 20px;
+  text-align: center;
+}
+
+.fin h2 {
+  margin: 0 0 10px;
+  font-size: 26px;
+  color: #ffd54a;
+}
+
+.fin .btn {
+  margin-top: 22px;
+  font-size: 18px;
+}
+
+.err {
+  color: #ff8a80;
+  font-size: 12px;
+    }
