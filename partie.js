@@ -12,6 +12,7 @@ import { ROUNDS } from "./rounds.js";
 import { calculerTournoi } from "./partiemoteur.js";
 import { ouvrirCycle, prolonger } from "./cycles.js";
 import { initHorloge, maintenant } from "./horloge.js";
+import { Sons } from "./sons.js";
 
 const params = new URLSearchParams(window.location.search);
 const salonId = params.get("s");
@@ -29,6 +30,10 @@ let prolongeTente = false;
 let cycleTermine = false;
 let reclameEnCours = false;
 let bilan = "";
+let dernierTic = "";
+let sonsJoues = {};
+let departsJoues = {};
+let finSonJoue = false;
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -127,6 +132,7 @@ async function envoyer(n, i, k, q) {
   const cle = n + "-" + i;
   if (envoyees[cle] !== undefined || maReponse(n, i) !== null) return;
   envoyees[cle] = k;
+  Sons.clic();
   majBoutons(q, k, false, false);
   try {
     // L'heure du clic est un nombre fixe : tout le monde lit la même valeur
@@ -163,7 +169,14 @@ function montrerQuestion(m, i, q) {
 
 function phaseQuestion(m, i, q, p, now) {
   montrerQuestion(m, i, q);
-  $("chrono").textContent = "⏱ " + Math.ceil((p.fin - now) / 1000) + " s";
+  const reste = Math.ceil((p.fin - now) / 1000);
+  $("chrono").textContent = "⏱ " + reste + " s";
+  // Petit tic-tac pendant les 5 dernières secondes
+  const cleTic = m.n + "-" + i + "-" + reste;
+  if (reste <= 5 && reste > 0 && dernierTic !== cleTic) {
+    dernierTic = cleTic;
+    Sons.tic();
+  }
   const c = maReponse(m.n, i);
   majBoutons(q, c, false, false);
   $("info").textContent = c !== null ? "Réponse envoyée ✓" : "";
@@ -181,6 +194,14 @@ function phaseResultat(m, i, q, now) {
   const plan = m.plan;
   const suivante = i < plan.questions.length - 1 ? plan.questions[i + 1].debut : plan.fin;
   const c = maReponse(m.n, i);
+
+  const cleSon = m.n + "-" + i;
+  if (!sonsJoues[cleSon]) {
+    sonsJoues[cleSon] = true;
+    if (c === q.bonne) Sons.bon();
+    else Sons.faux();
+  }
+
   majBoutons(q, c, true, true);
   $("chrono").textContent = "Suite dans " + Math.max(0, Math.ceil((suivante - now) / 1000)) + " s";
   if (c === null) $("info").textContent = "Pas de réponse";
@@ -190,6 +211,10 @@ function phaseResultat(m, i, q, now) {
 
 function avantManche(t, m, tous, now) {
   const reste = Math.ceil((m.debut - now) / 1000);
+  if (reste <= 3 && reste > 0 && dernierTic !== "m" + m.n + "-" + reste) {
+    dernierTic = "m" + m.n + "-" + reste;
+    Sons.tic();
+  }
   if (t.manches.length === 1) {
     $("titre-manche").textContent = ROUNDS[salon.round] ? ROUNDS[salon.round].titre : "";
     $("classement").innerHTML = "";
@@ -214,6 +239,7 @@ async function reclamer(gain) {
     maj["parties/" + salonId + "/reclame/" + uid] = true;
     await update(ref(db), maj);
     bilan = "✓ " + gain + " 🪙 ajoutées à ton solde";
+    Sons.piece();
   } catch (e) {
     bilan = e.code === "PERMISSION_DENIED" ? "Gain déjà encaissé" : "Erreur : " + (e.code || e.message);
   }
@@ -241,6 +267,12 @@ function finTournoi(t, m, tous) {
   const g = t.gagnants;
   const jeGagne = g.indexOf(uid) !== -1;
   const gain = Math.floor(pot() / g.length);
+
+  if (!finSonJoue) {
+    finSonJoue = true;
+    if (jeGagne) Sons.victoire();
+    else Sons.defaite();
+  }
 
   let titre;
   if (!t.partage) {
@@ -315,6 +347,10 @@ function afficher() {
 
     if (now < salon.ferme) {
       const reste = Math.ceil((salon.ferme - now) / 1000);
+      if (reste <= 3 && dernierTic !== "w" + reste) {
+        dernierTic = "w" + reste;
+        Sons.tic();
+      }
       $("btn-quitter").hidden = false;
       $("liste-attente").hidden = false;
       $("liste-attente").textContent = tous.map(nomJoueur).join("  ·  ");
@@ -352,6 +388,11 @@ function afficher() {
   if (now < m.debut) {
     avantManche(t, m, tous, now);
     return;
+  }
+
+  if (!departsJoues[m.n]) {
+    departsJoues[m.n] = true;
+    Sons.depart();
   }
 
   const plan = m.plan;
