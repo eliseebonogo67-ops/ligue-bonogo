@@ -2,6 +2,7 @@ import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/fir
 import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
 import { ROUNDS } from "./rounds.js";
+import { Sons } from "./sons.js";
 
 const PLAFOND_JOUR = 50;
 const $ = function (id) {
@@ -41,6 +42,7 @@ function afficherAccueil() {
     b.className = joue ? "joue" : "";
     b.textContent = r.titre + (joue ? " (déjà joué : 0 pièce)" : " (pièces à gagner)");
     b.addEventListener("click", function () {
+      Sons.clic();
       lancer(r);
     });
     liste.appendChild(b);
@@ -106,12 +108,17 @@ function repondre(i) {
     if (etat.serie === 5) g += 2;
     etat.gain += g;
     $("retour-rep").textContent = etat.deja ? "Bonne réponse !" : "Bonne réponse ! +" + g + " 🪙";
-    if (etat.serie >= 2) $("serie").textContent = "🔥 Série x" + etat.serie;
+    if (etat.serie >= 2) {
+      $("serie").textContent = "🔥 Série x" + etat.serie;
+      Sons.serie(etat.serie);
+    }
+    Sons.bon();
   } else {
     boutons[i].classList.add("faux");
     etat.serie = 0;
     $("serie").textContent = "";
     $("retour-rep").textContent = "Mauvaise réponse";
+    Sons.faux();
   }
 
   // L'explication de la bonne réponse : seulement dans l'entraînement
@@ -126,7 +133,7 @@ function repondre(i) {
 }
 
 async function finir() {
-  if (etat.fini) return;
+  if (!etat || etat.fini) return;
   etat.fini = true;
   const e = etat;
 
@@ -161,6 +168,7 @@ async function finir() {
       if (credite > 0) {
         fiche.pieces += credite;
         fiche.jours[aujourdhui()] = nouveauJour;
+        Sons.piece();
       }
       if (credite > 0) {
         message = "+" + credite + " 🪙 gagnées" + (credite < e.gain ? " (plafond du jour atteint)" : "");
@@ -205,6 +213,7 @@ async function demarrer() {
 
 $("btn-suivant").addEventListener("click", function () {
   if (!etat || etat.fini || !etat.verrou) return;
+  Sons.clic();
   etat.index++;
   if (etat.index < etat.round.questions.length) question();
   else finir();
