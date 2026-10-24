@@ -1,1 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Compétition</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="competition.css">
+</head>
+<body>
+<div class="ecran">
 
+  <header class="haut">
+    <a id="retour" class="icone retour" href="salon.html">←</a>
+    <div class="cagnotte"><span>Cagnotte</span><b id="cagnotte">0</b><i class="piece petite">B</i></div>
+    <span class="espace"></span>
+  </header>
+
+  <p id="titre-manche" class="titre-manche"></p>
+  <div id="classement" class="classement"></div>
+
+  <p id="statut" class="statut"></p>
+  <p id="liste-attente" class="liste-attente" hidden></p>
+  <button id="btn-quitter" class="btn bleu" hidden>Quitter et récupérer mon droit d’entrée</button>
+
+  <div id="zone-question" hidden>
+    <div class="ligne-q">
+      <span id="numero" class="info"></span>
+      <span id="chrono" class="chrono"></span>
+    </div>
+    <h2 id="question"></h2>
+    <div id="choix"></div>
+    <p id="info" class="info"></p>
+  </div>
+
+  <div id="zone-fin" class="fin" hidden>
+    <h2 id="fin-titre"></h2>
+    <p id="fin-detail" class="info"></p>
+    <a class="btn jaune" href="salon.html">Prochaine salle</a>
+    <a class="btn bleu" href="accueil.html">Accueil</a>
+  </div>
+
+  <p id="erreur" class="err"></p>
+
+</div>
+<script type="module" src="partie.js"></script>
+</body>
+                                              </html>
