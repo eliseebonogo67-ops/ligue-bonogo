@@ -1,1 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Entraînement</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="ecran">
 
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <div class="pieces"><span class="piece">B</span><b id="solde">0</b></div>
+    <span class="espace"></span>
+  </header>
+
+  <p class="jour">Pièces gagnées aujourd’hui : <b id="jour">0 / 50</b></p>
+  <p id="erreur" class="err"></p>
+
+  <section id="ecran-accueil">
+    <h2 class="titre">Choisis un round</h2>
+    <div id="liste-rounds"></div>
+  </section>
+
+  <section id="ecran-quiz" hidden>
+    <div class="ligne-q">
+      <span id="progression" class="info"></span>
+      <span id="serie" class="serie"></span>
+    </div>
+    <h2 id="question"></h2>
+    <div id="choix"></div>
+    <p id="retour-rep" class="retour-rep"></p>
+    <p id="explication" class="expl" hidden></p>
+    <button id="btn-suivant" class="btn vert" hidden>Suivant →</button>
+    <button id="btn-quitter" class="lien">Quitter le round</button>
+  </section>
+
+  <section id="ecran-fin" hidden>
+    <h2 class="titre">Round terminé</h2>
+    <p id="resultat" class="grand"></p>
+    <p id="message" class="info centre"></p>
+    <button id="btn-retour" class="btn vert">Retour aux rounds</button>
+  </section>
+
+</div>
+<script type="module" src="script.js"></script>
+</body>
+    </html>
