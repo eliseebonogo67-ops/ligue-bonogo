@@ -58,6 +58,14 @@
     font-weight: 700;
     margin: 0;
   }
+  .alerte {
+    min-height: 20px;
+    margin: 14px 0 0;
+    text-align: center;
+    color: #ff8a80;
+    font-size: 13px;
+    font-weight: 700;
+  }
 </style>
 </head>
 <body>
@@ -68,6 +76,8 @@
     <div class="pieces"><span class="piece">B</span><b id="solde">…</b></div>
     <span style="width: 62px;"></span>
   </header>
+
+  <p id="alerte" class="alerte"></p>
 
   <section class="popup bloc">
     <div class="ruban">CRÉER UN DÉFI</div>
@@ -80,9 +90,9 @@
     <button id="btn-creer" class="btn jaune"><span class="ic">⚔️</span>Créer le défi</button>
 
     <div id="zone-code" class="pile" hidden>
-      <p class="centre">Envoie ce code à ton ami :</p>
+      <p class="centre">Donne ce code à ton ami :</p>
       <div id="code" class="code-grand"></div>
-      <button id="btn-wa" class="btn vert"><span class="ic">📲</span>Envoyer par WhatsApp</button>
+      <button id="btn-wa" class="btn vert"><span class="ic">📲</span>Envoyer le code</button>
       <button id="btn-copier" class="btn bleu"><span class="ic">📋</span>Copier le lien</button>
       <button id="btn-commencer" class="btn jaune"><span class="ic">▶️</span>Commencer</button>
     </div>
@@ -98,6 +108,21 @@
   <p class="message">Chaque joueur paie la mise au début du match. Le gagnant récupère les deux mises, égalité = remboursement.</p>
 
 </div>
-<script type="module" src="defi.js"></script>
+<script>
+  window.addEventListener("error", function (e) {
+    var a = document.getElementById("alerte");
+    if (a) a.textContent = "Erreur : " + (e.message || "chargement impossible");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var a = document.getElementById("alerte");
+    var r = e.reason;
+    if (a) a.textContent = "Erreur : " + (r && r.message ? r.message : r);
+  });
+</script>
+<script
+  type="module"
+  src="defi.js"
+  onerror="document.getElementById('alerte').textContent = 'Fichier introuvable : vérifie defi.js, firebase.js et rounds.js dans ton dépôt.'"
+></script>
 </body>
-  </html>
+</html>
