@@ -28,7 +28,7 @@
     </div>
   </div>
 
-  <p id="statut" class="statut"></p>
+  <p id="statut" class="statut">Chargement…</p>
 
   <div id="zone-question" hidden>
     <p id="numero" class="info"></p>
@@ -46,6 +46,10 @@
   <p id="erreur" class="err"></p>
 
 </div>
-<script type="module" src="duel.js"></script>
+<script>
+  import("./duel.js").catch(function (e) {
+    document.getElementById("erreur").textContent = "Erreur de chargement : " + e.message;
+  });
+</script>
 </body>
-      </html>
+    </html>
