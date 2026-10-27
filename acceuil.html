@@ -46,6 +46,7 @@
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
+import { animerCompteur } from "./sons.js";
 
 const soldeEl = document.getElementById("solde");
 const msg = document.getElementById("msg-test");
@@ -53,7 +54,9 @@ let uid = null;
 
 async function lireSolde() {
   const snap = await get(ref(db, "joueurs/" + uid + "/pieces"));
-  soldeEl.textContent = snap.exists() ? snap.val() : 0;
+  const v = snap.exists() ? snap.val() : 0;
+  soldeEl.textContent = v;
+  return v;
 }
 
 async function demarrer() {
@@ -82,7 +85,7 @@ document.getElementById("btn-test").addEventListener("click", async function () 
     const m2 = {};
     m2[base + "pieces"] = actuel + 50;
     await update(ref(db), m2);
-    await lireSolde();
+    animerCompteur(soldeEl, actuel, actuel + 50, 1000);
     msg.textContent = "+50 pièces de test ajoutées.";
   } catch (e) {
     msg.textContent = "Erreur : " + (e.code || e.message);
@@ -92,4 +95,4 @@ document.getElementById("btn-test").addEventListener("click", async function () 
 demarrer();
 </script>
 </body>
-      </html>
+</html>
