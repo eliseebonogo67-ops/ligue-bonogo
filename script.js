@@ -2,7 +2,7 @@ import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/fir
 import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
 import { ROUNDS } from "./rounds.js";
-import { Sons } from "./sons.js";
+import { Sons, animerCompteur } from "./sons.js";
 
 const PLAFOND_JOUR = 50;
 const $ = function (id) {
@@ -42,7 +42,6 @@ function afficherAccueil() {
     b.className = joue ? "joue" : "";
     b.textContent = r.titre + (joue ? " (déjà joué : 0 pièce)" : " (pièces à gagner)");
     b.addEventListener("click", function () {
-      Sons.clic();
       lancer(r);
     });
     liste.appendChild(b);
@@ -136,6 +135,7 @@ async function finir() {
   if (!etat || etat.fini) return;
   etat.fini = true;
   const e = etat;
+  const avant = fiche.pieces;
 
   if (e.repondues === 0) {
     afficherAccueil();
@@ -168,7 +168,6 @@ async function finir() {
       if (credite > 0) {
         fiche.pieces += credite;
         fiche.jours[aujourdhui()] = nouveauJour;
-        Sons.piece();
       }
       if (credite > 0) {
         message = "+" + credite + " 🪙 gagnées" + (credite < e.gain ? " (plafond du jour atteint)" : "");
@@ -184,6 +183,7 @@ async function finir() {
 
   $("message").textContent = message;
   majSolde();
+  if (credite > 0) animerCompteur($("solde"), avant, fiche.pieces, 900);
 }
 
 async function demarrer() {
@@ -213,7 +213,6 @@ async function demarrer() {
 
 $("btn-suivant").addEventListener("click", function () {
   if (!etat || etat.fini || !etat.verrou) return;
-  Sons.clic();
   etat.index++;
   if (etat.index < etat.round.questions.length) question();
   else finir();
