@@ -1,4 +1,4 @@
-// Sons générés par le téléphone (aucun fichier audio)
+// Sons générés par le téléphone (gratuit, aucun fichier audio)
 const CLE = "ligue_son";
 let actif = true;
 try {
@@ -65,9 +65,17 @@ export const Sons = {
     note(base, 0.1, "triangle", 0.2, 0.25);
     note(base * 1.5, 0.18, "triangle", 0.2, 0.34);
   },
+  // Pièces gagnées : petite cascade qui monte
   piece: function () {
-    note(988, 0.08, "square", 0.1);
-    note(1319, 0.25, "square", 0.1, 0.08);
+    [988, 1175, 1319, 1568].forEach(function (f, i) {
+      note(f, 0.09, "square", 0.08, i * 0.07);
+    });
+  },
+  // Pièces perdues ou payées : trois notes qui descendent
+  perte: function () {
+    [784, 659, 523].forEach(function (f, i) {
+      note(f, 0.1, "triangle", 0.12, i * 0.09);
+    });
   },
   tic: function () {
     note(880, 0.05, "sine", 0.12);
@@ -91,6 +99,32 @@ export const Sons = {
   }
 };
 
+// Compteur qui monte ou descend avec un son à chaque pas
+export function animerCompteur(el, de, vers, duree) {
+  if (!el) return;
+  de = Number(de) || 0;
+  vers = Number(vers) || 0;
+  if (de === vers) {
+    el.textContent = vers;
+    return;
+  }
+  const pas = Math.min(Math.abs(vers - de), 12);
+  const monte = vers > de;
+  let i = 0;
+  el.textContent = de;
+  const timer = setInterval(function () {
+    i++;
+    el.textContent = Math.round(de + ((vers - de) * i) / pas);
+    note(monte ? 700 + i * 60 : 900 - i * 50, 0.05, "square", 0.07);
+    if (i >= pas) {
+      clearInterval(timer);
+      el.textContent = vers;
+      if (monte) Sons.piece();
+      else Sons.perte();
+    }
+  }, (duree || 900) / pas);
+}
+
 // Le navigateur exige un premier toucher avant d'autoriser le son
 document.addEventListener(
   "pointerdown",
@@ -100,8 +134,21 @@ document.addEventListener(
   { once: true }
 );
 
+// Un petit son sur tous les boutons (les réponses ont leurs propres sons)
+document.addEventListener(
+  "click",
+  function (e) {
+    const b = e.target.closest ? e.target.closest("button, a.btn") : null;
+    if (!b || b.id === "ligue-son") return;
+    if (b.closest("#choix")) return;
+    Sons.clic();
+  },
+  true
+);
+
 function creerBouton() {
   const b = document.createElement("button");
+  b.id = "ligue-son";
   b.textContent = actif ? "🔊" : "🔇";
   b.setAttribute("aria-label", "Son");
   b.style.cssText =
