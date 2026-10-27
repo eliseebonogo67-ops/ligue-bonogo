@@ -8,10 +8,99 @@ import {
 } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
 import { ROUNDS } from "./rounds.js";
-import { calculer, planning } from "./duelmoteur.js";
 import { initHorloge, maintenant } from "./horloge.js";
 import { Sons } from "./sons.js";
 
+// ===== Moteur du duel (réglages modifiables pour les tests) =====
+const DUREE_CULTURE_S = 30;
+const DUREE_CALCUL_S = 45;
+const PAUSE_DEBUT_MS = 6000;
+const TOLERANCE_MS = 1500;
+const REVEAL_MS = 4000;
+const ECART_EGALITE_MS = 0;
+const DEUX_FAUX = "annulee"; // "annulee" ou "premier"
+
+function dureeQuestionMs(rnd) {
+  const s = rnd.id.indexOf("calcul") !== -1 ? DUREE_CALCUL_S : DUREE_CULTURE_S;
+  return s * 1000;
+}
+
+function planning(lanceLe, rnd) {
+  const duree = dureeQuestionMs(rnd);
+  let debut = lanceLe + PAUSE_DEBUT_MS;
+  return rnd.questions.map(function () {
+    const p = {
+      debut: debut,
+      fin: debut + duree,
+      revele: debut + duree + TOLERANCE_MS,
+      suivante: debut + duree + TOLERANCE_MS + REVEAL_MS
+    };
+    debut = p.suivante;
+    return p;
+  });
+}
+
+function reponseValide(rep, p) {
+  if (!rep) return null;
+  if (rep.t < p.debut - TOLERANCE_MS) return null;
+  if (rep.t > p.fin + TOLERANCE_MS) return null;
+  return rep;
+}
+
+// gagnant : 1, 2, ou null (question annulée)
+function resultatQuestion(q, rep1, rep2, p) {
+  const r1 = reponseValide(rep1, p);
+  const r2 = reponseValide(rep2, p);
+  const ok1 = !!r1 && r1.c === q.bonne;
+  const ok2 = !!r2 && r2.c === q.bonne;
+  let gagnant = null;
+
+  if (ok1 && ok2) {
+    if (Math.abs(r1.t - r2.t) <= ECART_EGALITE_MS) {
+      gagnant = null;
+    } else {
+      gagnant = r1.t < r2.t ? 1 : 2;
+    }
+  } else if (ok1) {
+    gagnant = 1;
+  } else if (ok2) {
+    gagnant = 2;
+  } else if (DEUX_FAUX === "premier" && r1 && r2) {
+    gagnant = r1.t <= r2.t ? 1 : 2;
+  }
+
+  return {
+    gagnant: gagnant,
+    c1: r1 ? r1.c : null,
+    c2: r2 ? r2.c : null,
+    ok1: ok1,
+    ok2: ok2
+  };
+}
+
+function calculer(rnd, donnees, now) {
+  const plan = planning(donnees.lanceLe, rnd);
+  const resultats = [];
+  let v1 = 0;
+  let v2 = 0;
+
+  rnd.questions.forEach(function (q, i) {
+    const p = plan[i];
+    if (now < p.revele) {
+      resultats.push(null);
+      return;
+    }
+    const rq = (donnees.reponses && donnees.reponses["q" + i]) || {};
+    const res = resultatQuestion(q, rq[donnees.j1], rq[donnees.j2], p);
+    resultats.push(res);
+    if (res.gagnant === 1) v1++;
+    if (res.gagnant === 2) v2++;
+  });
+
+  return { plan: plan, resultats: resultats, v1: v1, v2: v2 };
+}
+
+// ===== Écran du duel =====
 const params = new URLSearchParams(window.location.search);
 const matchId = params.get("m");
 const slot = params.get("slot") === "2" ? 2 : 1;
@@ -210,6 +299,7 @@ async function payerMise() {
     maj["duels/" + matchId + "/mises/" + uid] = mise;
     await update(ref(db), maj);
     paye = true;
+    Sons.perte();
   } catch (e) {
     erreur(e);
   }
@@ -239,6 +329,8 @@ async function regler(vMoi, vAdv) {
       maj["duels/" + matchId + "/reclame/" + uid] = true;
       await update(ref(db), maj);
       Sons.piece();
+    } else {
+      setTimeout(Sons.perte, 900);
     }
     if (vMoi < vAdv) resumeMise = "Tu perds " + mise + " 🪙";
     else if (vMoi === vAdv) resumeMise = "Égalité : mise remboursée";
