@@ -20,6 +20,9 @@ const salonId = params.get("s");
 // partiemoteur.js attend 10 s après le départ : on en retire 7 pour démarrer 3 s après la fin des inscriptions
 const DECALAGE_DEPART_MS = 7000;
 
+// Au-delà de ce nombre de joueurs, le classement du haut devient compact
+const SEUIL_COMPACT = 4;
+
 let uid = null;
 let salon = null;
 let partie = {};
@@ -34,6 +37,9 @@ let dernierTic = "";
 let sonsJoues = {};
 let departsJoues = {};
 let finSonJoue = false;
+let entreeSonJoue = false;
+let classementOuvert = false;
+let signatureClassement = "";
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -74,42 +80,91 @@ function etat(texte) {
   rendu = "";
 }
 
-// Haut de l'écran : la note et les cases vert/rouge de chacun, pour comparer
+function viderClassement() {
+  $("classement").innerHTML = "";
+  signatureClassement = "";
+}
+
+// Une pastille : nom, cases vert/rouge (si demandées) et note
+function puce(id, enJeu, scores, marques, avecMarques) {
+  const actif = enJeu.indexOf(id) !== -1;
+  const d = document.createElement("div");
+  d.className = "joueur" + (id === uid ? " moi" : "") + (actif ? "" : " elimine");
+
+  const n = document.createElement("span");
+  n.textContent = nomJoueur(id) + (actif ? "" : " ✗");
+  d.appendChild(n);
+
+  if (avecMarques && marques && marques[id]) {
+    const mk = document.createElement("span");
+    mk.textContent = marques[id]
+      .map(function (v) {
+        return v === null ? "▫️" : v === 1 ? "🟩" : "🟥";
+      })
+      .join("");
+    mk.style.fontSize = "12px";
+    d.appendChild(mk);
+  }
+
+  const s = document.createElement("b");
+  s.textContent = scores[id] !== undefined ? scores[id] : "–";
+  d.appendChild(s);
+  return d;
+}
+
+// Haut de l'écran : jusqu'à 4 joueurs on voit tout ; au-delà, version compacte
 function afficherClassement(scores, enJeu, tous, marques) {
   const zone = $("classement");
-  zone.innerHTML = "";
   const ordre = tous.slice().sort(function (a, b) {
     const ja = enJeu.indexOf(a) !== -1 ? 1 : 0;
     const jb = enJeu.indexOf(b) !== -1 ? 1 : 0;
     if (ja !== jb) return jb - ja;
     return (scores[b] || 0) - (scores[a] || 0);
   });
-  ordre.forEach(function (id) {
-    const actif = enJeu.indexOf(id) !== -1;
-    const d = document.createElement("div");
-    d.className = "joueur" + (id === uid ? " moi" : "") + (actif ? "" : " elimine");
 
-    const n = document.createElement("span");
-    n.textContent = nomJoueur(id) + (actif ? "" : " ✗");
-    d.appendChild(n);
+  // On ne redessine que si quelque chose a changé (les boutons restent cliquables)
+  const signature = JSON.stringify([ordre, scores, marques, enJeu, classementOuvert]);
+  if (signature === signatureClassement) return;
+  signatureClassement = signature;
+  zone.innerHTML = "";
 
-    if (marques && marques[id]) {
-      const mk = document.createElement("span");
-      mk.textContent = marques[id]
-        .map(function (v) {
-          return v === null ? "▫️" : v === 1 ? "🟩" : "🟥";
-        })
-        .join("");
-      mk.style.fontSize = "12px";
-      d.appendChild(mk);
-    }
+  if (ordre.length <= SEUIL_COMPACT) {
+    zone.style.maxHeight = "";
+    zone.style.overflowY = "";
+    ordre.forEach(function (id) {
+      zone.appendChild(puce(id, enJeu, scores, marques, true));
+    });
+    return;
+  }
 
-    const s = document.createElement("b");
-    s.textContent = scores[id] !== undefined ? scores[id] : "–";
-    d.appendChild(s);
+  zone.style.maxHeight = "44vh";
+  zone.style.overflowY = "auto";
 
-    zone.appendChild(d);
+  const actifMoi = enJeu.indexOf(uid) !== -1;
+  const resume = document.createElement("div");
+  resume.style.cssText = "width:100%;text-align:center;font-size:13px;font-weight:800;color:#aab4ff;";
+  resume.textContent = actifMoi
+    ? "Ton rang : " + (ordre.indexOf(uid) + 1) + " sur " + ordre.length
+    : "Tu es éliminé (" + ordre.length + " joueurs)";
+  zone.appendChild(resume);
+
+  zone.appendChild(puce(uid, enJeu, scores, marques, true));
+
+  const autres = ordre.filter(function (id) {
+    return id !== uid;
   });
+  autres.slice(0, classementOuvert ? autres.length : 3).forEach(function (id) {
+    zone.appendChild(puce(id, enJeu, scores, marques, false));
+  });
+
+  const bouton = document.createElement("button");
+  bouton.textContent = classementOuvert ? "Réduire ▴" : "Voir tous (" + ordre.length + ") ▾";
+  bouton.style.cssText =
+    "width:100%;padding:8px;border:0;background:none;color:#aab4ff;font-weight:800;font-size:13px;cursor:pointer;";
+  bouton.addEventListener("click", function () {
+    classementOuvert = !classementOuvert;
+  });
+  zone.appendChild(bouton);
 }
 
 function maReponse(n, i) {
@@ -217,7 +272,7 @@ function avantManche(t, m, tous, now) {
   }
   if (t.manches.length === 1) {
     $("titre-manche").textContent = ROUNDS[salon.round] ? ROUNDS[salon.round].titre : "";
-    $("classement").innerHTML = "";
+    viderClassement();
     etat("La partie commence dans " + reste + " s");
     return;
   }
@@ -270,8 +325,12 @@ function finTournoi(t, m, tous) {
 
   if (!finSonJoue) {
     finSonJoue = true;
-    if (jeGagne) Sons.victoire();
-    else Sons.defaite();
+    if (jeGagne) {
+      Sons.victoire();
+    } else {
+      Sons.defaite();
+      setTimeout(Sons.perte, 900);
+    }
   }
 
   let titre;
@@ -342,8 +401,13 @@ function afficher() {
   if (!salon.lanceLe) {
     $("retour").hidden = false;
     $("titre-manche").textContent = "Salle " + salon.mise + " 🪙 · " + round.titre;
-    $("classement").innerHTML = "";
+    viderClassement();
     const n = tous.length;
+
+    if (!entreeSonJoue) {
+      entreeSonJoue = true;
+      Sons.perte();
+    }
 
     if (now < salon.ferme) {
       const reste = Math.ceil((salon.ferme - now) / 1000);
@@ -353,7 +417,8 @@ function afficher() {
       }
       $("btn-quitter").hidden = false;
       $("liste-attente").hidden = false;
-      $("liste-attente").textContent = tous.map(nomJoueur).join("  ·  ");
+      $("liste-attente").textContent =
+        n > 6 ? n + " joueurs inscrits" : tous.map(nomJoueur).join("  ·  ");
       etat(
         (n >= salon.max ? "Salle complète" : "Inscriptions ouvertes") +
           " · " + n + " / " + salon.max + "\nDépart dans " + reste + " s"
