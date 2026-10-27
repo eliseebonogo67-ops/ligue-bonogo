@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import "./sons.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBCW5AVP-5NzzzEuTEFrHr8KLVZbGrsbS8",
