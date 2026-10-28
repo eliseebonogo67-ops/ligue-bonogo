@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Boutique</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .retour {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900;
+  }
+  .alerte {
+    min-height: 18px;
+    margin: 10px 0 0;
+    text-align: center;
+    color: #ff8a80;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .profil {
+    margin: 18px 0 4px;
+    text-align: center;
+  }
+  .profil .avatar {
+    margin: 0 auto 8px;
+    width: 78px;
+    height: 78px;
+    font-size: 40px;
+  }
+  .profil .xp {
+    margin: 0;
+    font-size: 15px;
+    color: #ffd54a;
+    font-weight: 800;
+  }
+  .onglets {
+    display: flex;
+    gap: 8px;
+    margin: 18px 0 6px;
+  }
+  .onglet {
+    flex: 1;
+    padding: 10px 4px;
+    border-radius: 14px;
+    border: 2px solid var(--bord);
+    background: rgba(0, 0, 25, 0.5);
+    color: #cfd6ff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .onglet.actif {
+    border-color: var(--or);
+    color: #ffd54a;
+    background: linear-gradient(#2a3db5, #17238a);
+  }
+  .carte {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 16px;
+    border: 2px solid var(--bord);
+    background: rgba(10, 18, 90, 0.75);
+  }
+  .carte.equipe {
+    border-color: #7be046;
+  }
+  .apercu {
+    flex: none;
+    width: 56px;
+    height: 56px;
+    display: grid;
+    place-items: center;
+  }
+  .mini {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 4px solid var(--or);
+    background: linear-gradient(#2c3fb8, #121c70);
+    display: grid;
+    place-items: center;
+    font-size: 22px;
+  }
+  .mini.carre {
+    border-radius: 12px;
+    border-width: 3px;
+  }
+  .texte {
+    flex: 1;
+    min-width: 0;
+  }
+  .texte b {
+    display: block;
+    font-size: 16px;
+  }
+  .texte span {
+    font-size: 12px;
+    color: #aab4ff;
+  }
+  .carte button {
+    flex: none;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 12px;
+    background: linear-gradient(#7be046, #2c9e12);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), 0 3px 0 #1b6a0a;
+    color: #fff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .carte button.achat {
+    background: linear-gradient(#ffd54a, #ffa800);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.4), 0 3px 0 #a86a00;
+    color: #5a3a00;
+  }
+  .carte button.cher {
+    background: #3a3f66;
+    box-shadow: none;
+    color: #9aa0c8;
+  }
+  .carte button:disabled {
+    opacity: 0.75;
+    cursor: default;
+  }
+</style>
+</head>
+<body>
+<div class="ecran">
+
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <div class="pieces"><span class="piece">B</span><b id="solde">…</b></div>
+    <span style="width: 62px;"></span>
+  </header>
+
+  <p id="alerte" class="alerte"></p>
+
+  <div class="profil">
+    <div class="avatar">🧑‍🎓</div>
+    <p id="titre-joueur" class="xp"></p>
+  </div>
+
+  <div id="onglets" class="onglets"></div>
+  <div id="liste"></div>
+
+  <p id="msg" class="message"></p>
+  <p class="message">Les articles sont décoratifs : ils ne donnent aucun avantage dans les questions. Les pièces ne s’achètent jamais avec de l’argent.</p>
+
+</div>
+
+<script>
+  window.addEventListener("error", function (e) {
+    var a = document.getElementById("alerte");
+    if (a) a.textContent = "Erreur : " + (e.message || "chargement impossible");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var a = document.getElementById("alerte");
+    var r = e.reason;
+    if (a) a.textContent = "Erreur : " + (r && r.message ? r.message : r);
+  });
+</script>
+
+<script type="module">
+import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import { ref, get, set, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { auth, db } from "./firebase.js";
+import { CATEGORIES, ARTICLES, DEFAUTS, memoriser } from "./profil.js";
+import { Sons, animerCompteur } from "./sons.js";
+
+const $ = function (id) {
+  return document.getElementById(id);
+};
+
+let uid = null;
+let solde = 0;
+let possedes = {};
+let equipe = {};
+let onglet = "cadre";
+
+function dire(texte) {
+  $("msg").textContent = texte;
+}
+
+function estPossede(a) {
+  return a.prix === 0 || !!possedes[a.id];
+}
+
+function estEquipe(a) {
+  return (equipe[a.cat] || DEFAUTS[a.cat]) === a.id;
+}
+
+// Petit aperçu de l'article
+function apercu(a) {
+  const d = document.createElement("div");
+  d.className = "apercu";
+  if (a.cat === "cadre") {
+    const m = document.createElement("div");
+    m.className = "mini";
+    m.textContent = "🧑‍🎓";
+    m.style.borderColor = a.couleur;
+    m.style.boxShadow = a.ombre;
+    d.appendChild(m);
+  } else if (a.cat === "theme") {
+    const m = document.createElement("div");
+    m.className = "mini carre";
+    m.style.background = "linear-gradient(" + a.haut + "," + a.milieu + "," + a.bas + ")";
+    m.style.borderColor = a.bord;
+    d.appendChild(m);
+  } else {
+    d.textContent = "🏅";
+    d.style.fontSize = "30px";
+  }
+  return d;
+}
+
+function afficherOnglets() {
+  const zone = $("onglets");
+  zone.innerHTML = "";
+  CATEGORIES.forEach(function (c) {
+    const b = document.createElement("button");
+    b.className = "onglet" + (c.id === onglet ? " actif" : "");
+    b.textContent = c.emoji + " " + c.nom;
+    b.addEventListener("click", function () {
+      onglet = c.id;
+      afficherOnglets();
+      afficherListe();
+    });
+    zone.appendChild(b);
+  });
+}
+
+function afficherListe() {
+  const zone = $("liste");
+  zone.innerHTML = "";
+  ARTICLES.filter(function (a) {
+    return a.cat === onglet;
+  }).forEach(function (a) {
+    const carte = document.createElement("div");
+    carte.className = "carte" + (estEquipe(a) ? " equipe" : "");
+    carte.appendChild(apercu(a));
+
+    const texte = document.createElement("div");
+    texte.className = "texte";
+    const nom = document.createElement("b");
+    nom.textContent = a.nom;
+    const etat = document.createElement("span");
+    etat.textContent = estPossede(a) ? "Tu l’as" : a.prix + " pièces";
+    texte.appendChild(nom);
+    texte.appendChild(etat);
+    carte.appendChild(texte);
+
+    const b = document.createElement("button");
+    if (estEquipe(a)) {
+      b.textContent = "Équipé ✓";
+      b.disabled = true;
+    } else if (estPossede(a)) {
+      b.textContent = "Équiper";
+      b.addEventListener("click", function () {
+        equiper(a);
+      });
+    } else {
+      b.textContent = "🪙 " + a.prix;
+      b.className = solde >= a.prix ? "achat" : "cher";
+      b.addEventListener("click", function () {
+        acheter(a);
+      });
+    }
+    carte.appendChild(b);
+    zone.appendChild(carte);
+  });
+}
+
+async function acheter(a) {
+  if (solde < a.prix) {
+    Sons.faux();
+    dire("Il te faut " + a.prix + " pièces (tu en as " + solde + "). Entraîne-toi pour en gagner !");
+    return;
+  }
+  const maj = {};
+  maj["joueurs/" + uid + "/pieces"] = solde - a.prix;
+  maj["joueurs/" + uid + "/boutique/" + a.id] = true;
+  try {
+    await update(ref(db), maj);
+    const avant = solde;
+    solde -= a.prix;
+    possedes[a.id] = true;
+    animerCompteur($("solde"), avant, solde, 800);
+    dire("Acheté : " + a.nom + ". Touche « Équiper » pour le porter.");
+    afficherListe();
+  } catch (e) {
+    dire("Achat impossible : " + (e.code || e.message));
+  }
+}
+
+async function equiper(a) {
+  try {
+    await set(ref(db, "joueurs/" + uid + "/equipe/" + a.cat), a.id);
+    equipe[a.cat] = a.id;
+    memoriser(equipe);
+    Sons.bon();
+    dire(a.nom + " équipé.");
+    afficherListe();
+  } catch (e) {
+    dire("Impossible d’équiper : " + (e.code || e.message));
+  }
+}
+
+async function demarrer() {
+  try {
+    const cred = await signInAnonymously(auth);
+    uid = cred.user.uid;
+    const snap = await get(ref(db, "joueurs/" + uid));
+    const v = snap.exists() ? snap.val() : {};
+    solde = v.pieces || 0;
+    possedes = v.boutique || {};
+    equipe = v.equipe || {};
+    $("solde").textContent = solde;
+    memoriser(equipe);
+    afficherOnglets();
+    afficherListe();
+  } catch (e) {
+    $("alerte").textContent = "Connexion impossible : " + (e.code || e.message);
+  }
+}
+
+demarrer();
+</script>
+</body>
+</html>
