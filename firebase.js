@@ -17,3 +17,12 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getDatabase(app);
+
+// Applique sur toutes les pages le thème, le cadre et le titre achetés dans la boutique
+import("./profil.js")
+  .then(function (m) {
+    m.appliquerProfil();
+  })
+  .catch(function () {
+    // la boutique n'est pas indispensable au reste du jeu
+  });
