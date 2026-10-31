@@ -127,7 +127,7 @@ import { ref, get } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-dat
 import { auth, db } from "./firebase.js";
 import { ROUNDS } from "./rounds.js";
 
-// Code = round (1 chiffre) + mise (0, 1 ou 2) + 4 lettres aléatoires
+// Code = "0" + mise (0, 1 ou 2) + numéro du sujet (2 caractères) + 2 lettres au hasard
 const LETTRES = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MISES = [0, 5, 10];
 
@@ -143,8 +143,11 @@ function dire(texte) {
 }
 
 function nouveauCode(indexRound, indexMise) {
-  let c = String(indexRound) + String(indexMise);
-  for (let i = 0; i < 4; i++) {
+  let c =
+    "0" + String(indexMise) +
+    LETTRES.charAt(Math.floor(indexRound / 32) % 32) +
+    LETTRES.charAt(indexRound % 32);
+  for (let i = 0; i < 2; i++) {
     c += LETTRES.charAt(Math.floor(Math.random() * LETTRES.length));
   }
   return c;
@@ -152,7 +155,10 @@ function nouveauCode(indexRound, indexMise) {
 
 function lireCode(code) {
   if (!/^[0-9][0-2][A-Z2-9]{4}$/.test(code)) return null;
-  const round = ROUNDS[parseInt(code.charAt(0), 10)];
+  const a = LETTRES.indexOf(code.charAt(2));
+  const b = LETTRES.indexOf(code.charAt(3));
+  if (a < 0 || b < 0) return null;
+  const round = ROUNDS[a * 32 + b];
   if (!round) return null;
   return { round: round, mise: MISES[parseInt(code.charAt(1), 10)] };
 }
@@ -231,7 +237,7 @@ $("btn-creer").addEventListener("click", function () {
     dire("Solde insuffisant : il te faut " + m + " pièces (tu en as " + solde + ").");
     return;
   }
-  codeCourant = nouveauCode($("round").value, indexMise);
+  codeCourant = nouveauCode(parseInt($("round").value, 10), indexMise);
   $("code").textContent = codeCourant;
   $("zone-code").hidden = false;
   dire("Défi créé (mise : " + texteMise(m) + "). Donne le code à ton ami, puis touche Commencer.");
@@ -300,4 +306,4 @@ if (recu) {
 chargerSolde();
 </script>
 </body>
-</html>
+  </html>
