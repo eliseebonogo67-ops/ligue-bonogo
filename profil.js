@@ -1,22 +1,41 @@
 // Catalogue de la boutique (articles uniquement décoratifs) et application du profil
 
 export const CATEGORIES = [
-  { id: "cadre", nom: "Cadres", emoji: "🖼️" },
+  { id: "animal", nom: "Animaux", emoji: "🐾" },
   { id: "theme", nom: "Thèmes", emoji: "🎨" },
   { id: "titre", nom: "Titres", emoji: "🏅" }
 ];
 
 // Ce que chaque joueur porte tant qu'il n'a rien choisi (gratuit)
-export const DEFAUTS = { cadre: "cadre_or", theme: "theme_nuit", titre: "titre_recrue" };
+export const DEFAUTS = { animal: "animal_etudiant", theme: "theme_nuit", titre: "titre_recrue" };
+
+// La rareté donne la couleur et la lueur autour de l'avatar
+export const RARETES = {
+  commun: { nom: "Commun", couleur: "#d9d9d9", ombre: "none" },
+  rare: { nom: "Rare", couleur: "#4cc3ff", ombre: "0 0 12px rgba(76,195,255,0.7)" },
+  epique: { nom: "Épique", couleur: "#b46bff", ombre: "0 0 14px rgba(180,107,255,0.8)" },
+  legendaire: { nom: "Légendaire", couleur: "#ffd54a", ombre: "0 0 18px rgba(255,213,74,1)" }
+};
 
 export const ARTICLES = [
-  // Cadres d'avatar
-  { id: "cadre_or", cat: "cadre", nom: "Or classique", prix: 0, couleur: "#f0b400", ombre: "none" },
-  { id: "cadre_bronze", cat: "cadre", nom: "Bronze", prix: 40, couleur: "#cd7f32", ombre: "0 0 10px rgba(205,127,50,0.6)" },
-  { id: "cadre_argent", cat: "cadre", nom: "Argent", prix: 80, couleur: "#d9d9d9", ombre: "0 0 12px rgba(217,217,217,0.6)" },
-  { id: "cadre_emeraude", cat: "cadre", nom: "Émeraude", prix: 120, couleur: "#2ecc71", ombre: "0 0 14px rgba(46,204,113,0.8)" },
-  { id: "cadre_flammes", cat: "cadre", nom: "Flammes", prix: 180, couleur: "#ff6b2c", ombre: "0 0 16px rgba(255,107,44,0.9)" },
-  { id: "cadre_neon", cat: "cadre", nom: "Néon", prix: 250, couleur: "#00e5ff", ombre: "0 0 18px rgba(0,229,255,1)" },
+  // Animaux (ton avatar devient l'animal)
+  { id: "animal_etudiant", cat: "animal", nom: "Étudiant", emoji: "🧑‍🎓", rarete: "commun", prix: 0 },
+  { id: "animal_singe", cat: "animal", nom: "Singe", emoji: "🐒", rarete: "commun", prix: 40 },
+  { id: "animal_cheval", cat: "animal", nom: "Cheval", emoji: "🐴", rarete: "commun", prix: 60 },
+  { id: "animal_zebre", cat: "animal", nom: "Zèbre", emoji: "🦓", rarete: "commun", prix: 70 },
+  { id: "animal_girafe", cat: "animal", nom: "Girafe", emoji: "🦒", rarete: "commun", prix: 80 },
+  { id: "animal_loup", cat: "animal", nom: "Loup", emoji: "🐺", rarete: "rare", prix: 120 },
+  { id: "animal_buffle", cat: "animal", nom: "Buffle", emoji: "🐃", rarete: "rare", prix: 140 },
+  { id: "animal_hippo", cat: "animal", nom: "Hippopotame", emoji: "🦛", rarete: "rare", prix: 160 },
+  { id: "animal_crocodile", cat: "animal", nom: "Crocodile", emoji: "🐊", rarete: "rare", prix: 180 },
+  { id: "animal_aigle", cat: "animal", nom: "Aigle", emoji: "🦅", rarete: "epique", prix: 200 },
+  { id: "animal_guepard", cat: "animal", nom: "Guépard", emoji: "🐆", rarete: "epique", prix: 220 },
+  { id: "animal_tigre", cat: "animal", nom: "Tigre", emoji: "🐯", rarete: "epique", prix: 240 },
+  { id: "animal_rhino", cat: "animal", nom: "Rhinocéros", emoji: "🦏", rarete: "epique", prix: 260 },
+  { id: "animal_elephant", cat: "animal", nom: "Éléphant", emoji: "🐘", rarete: "epique", prix: 280 },
+  { id: "animal_gorille", cat: "animal", nom: "Gorille", emoji: "🦍", rarete: "legendaire", prix: 350 },
+  { id: "animal_lion", cat: "animal", nom: "Lion", emoji: "🦁", rarete: "legendaire", prix: 400 },
+  { id: "animal_dragon", cat: "animal", nom: "Dragon", emoji: "🐉", rarete: "legendaire", prix: 500 },
 
   // Thèmes de couleurs
   { id: "theme_nuit", cat: "theme", nom: "Bleu nuit", prix: 0, haut: "#1b2a8a", milieu: "#0b1250", bas: "#060a2e", bord: "#2a3bb0" },
@@ -42,7 +61,7 @@ function article(id) {
   });
 }
 
-// Applique le thème, le cadre et le titre sur la page ouverte
+// Applique le thème, l'animal et le titre sur la page ouverte
 export function appliquer(equipe) {
   equipe = equipe || {};
   const racine = document.documentElement;
@@ -53,10 +72,12 @@ export function appliquer(equipe) {
   racine.style.setProperty("--fond-bas", theme.bas);
   racine.style.setProperty("--bord", theme.bord);
 
-  const cadre = article(equipe.cadre) || article(DEFAUTS.cadre);
+  const animal = article(equipe.animal) || article(DEFAUTS.animal);
+  const r = RARETES[animal.rarete];
   document.querySelectorAll(".avatar").forEach(function (a) {
-    a.style.borderColor = cadre.couleur;
-    a.style.boxShadow = cadre.ombre;
+    a.textContent = animal.emoji;
+    a.style.borderColor = r.couleur;
+    a.style.boxShadow = r.ombre;
   });
 
   const titre = article(equipe.titre) || article(DEFAUTS.titre);
