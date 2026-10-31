@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Administration</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .retour {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900;
+  }
+  .alerte {
+    min-height: 18px;
+    margin: 10px 0 0;
+    text-align: center;
+    color: #ff8a80;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .bloc {
+    margin: 46px auto 0;
+  }
+  label {
+    display: block;
+    margin: 0 0 6px 4px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--texte-doux);
+  }
+  select,
+  input[type="text"],
+  textarea {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 14px;
+    border-radius: 14px;
+    border: 3px solid var(--or);
+    background: #0b1250;
+    color: #fff;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  textarea {
+    height: 170px;
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: 400;
+    resize: vertical;
+  }
+  .coche {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    color: #cfd6ff;
+  }
+  .coche input {
+    width: 20px;
+    height: 20px;
+  }
+  .petit {
+    font-size: 16px;
+    padding: 12px;
+    margin-top: 10px;
+  }
+  .aide {
+    margin: 4px 0 6px;
+    color: #cfd6ff;
+    font-size: 13px;
+    word-break: break-all;
+  }
+  .rapport {
+    margin: 12px 0 0;
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(0, 0, 20, 0.5);
+    color: #cfd6ff;
+    font-family: inherit;
+    font-size: 13px;
+    white-space: pre-wrap;
+  }
+  .rapport:empty {
+    display: none;
+  }
+  .ligne {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 14px;
+  }
+  .ligne span {
+    flex: 1;
+    min-width: 0;
+  }
+  .ligne small {
+    display: block;
+    color: #aab4ff;
+  }
+  .ligne button {
+    flex: none;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 2px solid #b03b4a;
+    background: none;
+    color: #ff8a80;
+    font-family: inherit;
+    font-weight: 800;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="ecran">
+
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <b>Administration</b>
+    <span style="width: 62px;"></span>
+  </header>
+
+  <p id="alerte" class="alerte"></p>
+
+  <section class="popup bloc">
+    <div class="ruban">ACCÈS</div>
+    <p class="aide">Ton identifiant : <b id="uid">…</b></p>
+    <button id="btn-admin" class="btn jaune petit">🔑 Devenir administrateur</button>
+    <button id="btn-verif" class="btn bleu petit">Vérifier mon accès</button>
+    <p id="etat-acces" class="aide"></p>
+  </section>
+
+  <section class="popup bloc">
+    <div class="ruban">IMPORTER</div>
+    <label for="niveau">Niveau</label>
+    <select id="niveau">
+      <option>BEPC</option>
+      <option>BAC</option>
+      <option>Autre</option>
+    </select>
+    <label for="matiere">Matière</label>
+    <input id="matiere" type="text" placeholder="Ex : SVT" autocomplete="off">
+    <label class="coche"><input id="calcul" type="checkbox"> Questions de calcul (chrono plus long)</label>
+    <label for="json">JSON de ton ancienne app</label>
+    <textarea id="json" placeholder='[{"texte":"…","reponses":[{"texte":"…","correct":true}, …],"explication":"…"}, …]'></textarea>
+    <button id="btn-analyser" class="btn bleu petit">🔍 Analyser</button>
+    <pre id="rapport" class="rapport"></pre>
+    <button id="btn-enregistrer" class="btn vert petit" hidden>💾 Enregistrer dans la ligue</button>
+  </section>
+
+  <section class="popup bloc">
+    <div class="ruban">CATALOGUE</div>
+    <div id="liste"></div>
+  </section>
+
+  <p id="msg" class="message"></p>
+  <p class="message">Les séries importées sont ajoutées à la fin. Évite de supprimer une série quand des joueurs sont en partie : les suivantes changent de place.</p>
+
+</div>
+
+<script>
+  window.addEventListener("error", function (e) {
+    var a = document.getElementById("alerte");
+    if (a) a.textContent = "Erreur : " + (e.message || "chargement impossible");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var a = document.getElementById("alerte");
+    var r = e.reason;
+    if (a) a.textContent = "Erreur : " + (r && r.message ? r.message : r);
+  });
+</script>
+
+<script type="module">
+import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import { ref, get, set, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { auth, db } from "./firebase.js";
+
+const $ = function (id) {
+  return document.getElementById(id);
+};
+
+let uid = null;
+let catalogue = {};
+let preparees = [];
+
+function dire(texte) {
+  $("msg").textContent = texte;
+}
+
+function slug(texte) {
+  return String(texte)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 20);
+}
+
+function nettoyer(texte, max) {
+  return String(texte === undefined || texte === null ? "" : texte).trim().slice(0, max);
+}
+
+// Convertit une question de l'ancienne app : { texte, reponses: [{ texte, correct }], explication }
+function convertir(q) {
+  if (!q || typeof q.texte !== "string" || !Array.isArray(q.reponses)) return { erreur: "format" };
+
+  const choix = q.reponses.map(function (r) {
+    return nettoyer(r ? r.texte : "", 300);
+  });
+  if (choix.length < 2 || choix.length > 4 || choix.some(function (c) { return c === ""; })) {
+    return { erreur: "choix" };
+  }
+
+  const bonnes = [];
+  q.reponses.forEach(function (r, i) {
+    if (r && r.correct === true) bonnes.push(i);
+  });
+  if (bonnes.length !== 1) return { erreur: "bonnes" };
+
+  const res = { q: nettoyer(q.texte, 500), choix: choix, bonne: bonnes[0] };
+  if (!res.q) return { erreur: "format" };
+  const e = nettoyer(q.explication, 700);
+  if (e) res.expl = e;
+  return { question: res };
+}
+
+function analyser() {
+  preparees = [];
+  $("btn-enregistrer").hidden = true;
+
+  if (!$("matiere").value.trim()) {
+    $("rapport").textContent = "Écris d’abord le nom de la matière.";
+    return;
+  }
+
+  let donnees;
+  try {
+    donnees = JSON.parse($("json").value);
+  } catch (e) {
+    $("rapport").textContent = "JSON illisible : " + e.message;
+    return;
+  }
+
+  const liste = Array.isArray(donnees)
+    ? donnees
+    : donnees && Array.isArray(donnees.questions)
+      ? donnees.questions
+      : null;
+  if (!liste) {
+    $("rapport").textContent = "Je ne trouve pas de liste de questions dans ce JSON.";
+    return;
+  }
+
+  const ok = [];
+  let plusieurs = 0;
+  let choixKo = 0;
+  let formatKo = 0;
+  liste.forEach(function (q) {
+    const r = convertir(q);
+    if (r.question) ok.push(r.question);
+    else if (r.erreur === "bonnes") plusieurs++;
+    else if (r.erreur === "choix") choixKo++;
+    else formatKo++;
+  });
+
+  const groupes = [];
+  let restantes = 0;
+  for (let i = 0; i < ok.length; i += 5) {
+    const g = ok.slice(i, i + 5);
+    if (g.length >= 3) groupes.push(g);
+    else restantes = g.length;
+  }
+  preparees = groupes;
+
+  let texte = liste.length + " question(s) lue(s)\n";
+  texte += "• " + ok.length + " utilisable(s)\n";
+  if (plusieurs) texte += "• " + plusieurs + " ignorée(s) : zéro ou plusieurs bonnes réponses\n";
+  if (choixKo) texte += "• " + choixKo + " ignorée(s) : moins de 2 ou plus de 4 choix\n";
+  if (formatKo) texte += "• " + formatKo + " ignorée(s) : format incorrect\n";
+  if (restantes) texte += "• " + restantes + " question(s) en trop non utilisée(s)\n";
+  texte += groupes.length
+    ? "→ " + groupes.length + " série(s) de 5 questions (ou 3 à 4 pour la dernière)"
+    : "→ Aucune série possible (il faut au moins 3 questions utilisables).";
+  $("rapport").textContent = texte;
+
+  if (groupes.length > 0) $("btn-enregistrer").hidden = false;
+}
+
+async function chargerCatalogue() {
+  const snap = await get(ref(db, "sujets"));
+  catalogue = snap.exists() ? snap.val() : {};
+  afficherCatalogue();
+}
+
+function afficherCatalogue() {
+  const zone = $("liste");
+  zone.innerHTML = "";
+  const ids = Object.keys(catalogue).sort(function (a, b) {
+    return (catalogue[a].ordre || 0) - (catalogue[b].ordre || 0);
+  });
+  if (ids.length === 0) {
+    const p = document.createElement("p");
+    p.className = "aide";
+    p.textContent = "Aucune série importée pour le moment.";
+    zone.appendChild(p);
+    return;
+  }
+  ids.forEach(function (id) {
+    const s = catalogue[id];
+    const n = Array.isArray(s.questions) ? s.questions.length : 0;
+    const ligne = document.createElement("div");
+    ligne.className = "ligne";
+
+    const texte = document.createElement("span");
+    texte.textContent = s.titre;
+    const petit = document.createElement("small");
+    petit.textContent = n + " questions";
+    texte.appendChild(petit);
+
+    const b = document.createElement("button");
+    b.textContent = "Supprimer";
+    b.addEventListener("click", function () {
+      supprimer(id, s.titre);
+    });
+
+    ligne.appendChild(texte);
+    ligne.appendChild(b);
+    zone.appendChild(ligne);
+  });
+}
+
+async function enregistrer() {
+  if (!preparees.length) return;
+  const niveau = $("niveau").value;
+  const matiere = $("matiere").value.trim();
+  const prefixe = slug(niveau) + "_" + slug(matiere) + ($("calcul").checked ? "_calcul" : "");
+
+  let ordreMax = 0;
+  Object.keys(catalogue).forEach(function (id) {
+    ordreMax = Math.max(ordreMax, catalogue[id].ordre || 0);
+  });
+
+  const maj = {};
+  const pris = {};
+  let n = 0;
+  preparees.forEach(function (g, k) {
+    let id;
+    do {
+      n++;
+      id = prefixe + "_s" + String(n).padStart(2, "0");
+    } while (catalogue[id] || pris[id]);
+    pris[id] = true;
+    maj["sujets/" + id] = {
+      titre: niveau + " " + matiere + " · Série " + n,
+      niveau: niveau,
+      matiere: matiere,
+      ordre: ordreMax + k + 1,
+      questions: g
+    };
+  });
+  maj["catalogue/version"] = Date.now();
+
+  try {
+    await update(ref(db), maj);
+    dire(preparees.length + " série(s) enregistrée(s). Elles sont déjà dans l’entraînement, les compétitions et les défis.");
+    preparees = [];
+    $("btn-enregistrer").hidden = true;
+    $("rapport").textContent = "";
+    await chargerCatalogue();
+  } catch (e) {
+    if (e.code === "PERMISSION_DENIED") {
+      dire("Refusé : touche d’abord « Devenir administrateur » en haut de la page.");
+    } else {
+      dire("Enregistrement impossible : " + (e.code || e.message));
+    }
+  }
+}
+
+async function supprimer(id, titre) {
+  if (!window.confirm("Supprimer « " + titre + " » ? Les séries suivantes changeront de place.")) return;
+  const maj = {};
+  maj["sujets/" + id] = null;
+  maj["catalogue/version"] = Date.now();
+  try {
+    await update(ref(db), maj);
+    dire("Série supprimée.");
+    await chargerCatalogue();
+  } catch (e) {
+    dire("Suppression impossible : " + (e.code || e.message));
+  }
+}
+
+async function devenirAdmin() {
+  try {
+    await set(ref(db, "admin/uid"), uid);
+    $("etat-acces").textContent = "✓ Tu es l’administrateur.";
+  } catch (e) {
+    $("etat-acces").textContent =
+      e.code === "PERMISSION_DENIED"
+        ? "Un administrateur existe déjà (ce n’est peut-être pas ce téléphone). Touche « Vérifier mon accès »."
+        : "Erreur : " + (e.code || e.message);
+  }
+}
+
+async function verifier() {
+  try {
+    await set(ref(db, "catalogue/version"), Date.now());
+    $("etat-acces").textContent = "✓ Accès administrateur confirmé.";
+  } catch (e) {
+    $("etat-acces").textContent = "✗ Tu n’es pas administrateur sur ce téléphone.";
+  }
+}
+
+async function demarrer() {
+  try {
+    const cred = await signInAnonymously(auth);
+    uid = cred.user.uid;
+    $("uid").textContent = uid;
+    await chargerCatalogue();
+  } catch (e) {
+    $("alerte").textContent = "Connexion impossible : " + (e.code || e.message);
+  }
+}
+
+$("btn-admin").addEventListener("click", devenirAdmin);
+$("btn-verif").addEventListener("click", verifier);
+$("btn-analyser").addEventListener("click", analyser);
+$("btn-enregistrer").addEventListener("click", enregistrer);
+
+demarrer();
+</script>
+</body>
+      </html>
