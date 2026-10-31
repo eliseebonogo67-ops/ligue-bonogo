@@ -1,3 +1,7 @@
+import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import { ref, get } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { auth, db } from "./firebase.js";
+
 export const ROUNDS = [
   {
     id: "test_cg_01",
@@ -360,3 +364,78 @@ export const ROUNDS = [
     ]
   }
 ];
+
+// ===== Sujets importés par l'administrateur, ajoutés à la suite des sujets d'exemple =====
+const CACHE = "ligue_catalogue";
+let termine = false;
+
+function ajouter(liste) {
+  if (termine) return;
+  termine = true;
+  liste
+    .slice()
+    .sort(function (a, b) {
+      return (a.ordre - b.ordre) || (a.id < b.id ? -1 : 1);
+    })
+    .forEach(function (s) {
+      ROUNDS.push({ id: s.id, titre: s.titre, questions: s.questions });
+    });
+}
+
+function lireCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE) || "null");
+    return c && Array.isArray(c.liste) ? c : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function chargerCatalogue() {
+  const cache = lireCache();
+  try {
+    await signInAnonymously(auth);
+    const vSnap = await get(ref(db, "catalogue/version"));
+    const version = vSnap.exists() ? vSnap.val() : 0;
+
+    // Rien n'a changé depuis la dernière fois : on réutilise la mémoire du téléphone
+    if (cache && cache.version === version) {
+      ajouter(cache.liste);
+      return;
+    }
+
+    const snap = await get(ref(db, "sujets"));
+    const brut = snap.exists() ? snap.val() : {};
+    const liste = Object.keys(brut)
+      .map(function (id) {
+        const s = brut[id] || {};
+        return { id: id, titre: s.titre, ordre: s.ordre || 0, questions: s.questions };
+      })
+      .filter(function (s) {
+        return s.titre && Array.isArray(s.questions) && s.questions.length > 0;
+      });
+
+    try {
+      localStorage.setItem(CACHE, JSON.stringify({ version: version, liste: liste }));
+    } catch (e) {
+      // sans importance
+    }
+    ajouter(liste);
+  } catch (e) {
+    // Hors connexion : on prend la dernière version connue
+    if (cache) ajouter(cache.liste);
+  }
+}
+
+await Promise.race([
+  chargerCatalogue(),
+  new Promise(function (resolve) {
+    setTimeout(resolve, 8000);
+  })
+]);
+
+if (!termine) {
+  const c = lireCache();
+  if (c) ajouter(c.liste);
+  else termine = true;
+    }
