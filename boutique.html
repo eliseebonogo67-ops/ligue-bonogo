@@ -28,9 +28,9 @@
   }
   .profil .avatar {
     margin: 0 auto 8px;
-    width: 78px;
-    height: 78px;
-    font-size: 40px;
+    width: 84px;
+    height: 84px;
+    font-size: 44px;
   }
   .profil .xp {
     margin: 0;
@@ -81,14 +81,14 @@
     place-items: center;
   }
   .mini {
-    width: 46px;
-    height: 46px;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
     border: 4px solid var(--or);
     background: linear-gradient(#2c3fb8, #121c70);
     display: grid;
     place-items: center;
-    font-size: 22px;
+    font-size: 26px;
   }
   .mini.carre {
     border-radius: 12px;
@@ -175,7 +175,7 @@
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import { ref, get, set, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { CATEGORIES, ARTICLES, DEFAUTS, memoriser } from "./profil.js";
+import { CATEGORIES, ARTICLES, DEFAUTS, RARETES, memoriser } from "./profil.js";
 import { Sons, animerCompteur } from "./sons.js";
 
 const $ = function (id) {
@@ -186,7 +186,7 @@ let uid = null;
 let solde = 0;
 let possedes = {};
 let equipe = {};
-let onglet = "cadre";
+let onglet = "animal";
 
 function dire(texte) {
   $("msg").textContent = texte;
@@ -204,12 +204,13 @@ function estEquipe(a) {
 function apercu(a) {
   const d = document.createElement("div");
   d.className = "apercu";
-  if (a.cat === "cadre") {
+  if (a.cat === "animal") {
+    const r = RARETES[a.rarete];
     const m = document.createElement("div");
     m.className = "mini";
-    m.textContent = "🧑‍🎓";
-    m.style.borderColor = a.couleur;
-    m.style.boxShadow = a.ombre;
+    m.textContent = a.emoji;
+    m.style.borderColor = r.couleur;
+    m.style.boxShadow = r.ombre;
     d.appendChild(m);
   } else if (a.cat === "theme") {
     const m = document.createElement("div");
@@ -222,6 +223,12 @@ function apercu(a) {
     d.style.fontSize = "30px";
   }
   return d;
+}
+
+function detail(a) {
+  const prix = estPossede(a) ? "Tu l’as" : a.prix + " pièces";
+  if (a.cat === "animal") return RARETES[a.rarete].nom + " · " + prix;
+  return prix;
 }
 
 function afficherOnglets() {
@@ -255,7 +262,7 @@ function afficherListe() {
     const nom = document.createElement("b");
     nom.textContent = a.nom;
     const etat = document.createElement("span");
-    etat.textContent = estPossede(a) ? "Tu l’as" : a.prix + " pièces";
+    etat.textContent = detail(a);
     texte.appendChild(nom);
     texte.appendChild(etat);
     carte.appendChild(texte);
@@ -337,4 +344,4 @@ async function demarrer() {
 demarrer();
 </script>
 </body>
-</html>
+  </html>
