@@ -3,6 +3,7 @@ import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/fire
 import { auth, db } from "./firebase.js";
 import { ROUNDS } from "./rounds.js";
 import { Sons, animerCompteur } from "./sons.js";
+import { aujourdhui, gradeDe, totalXp } from "./progression.js";
 
 const PLAFOND_JOUR = 50;
 const $ = function (id) {
@@ -10,12 +11,8 @@ const $ = function (id) {
 };
 
 let uid = null;
-let fiche = { pieces: 0, jours: {}, roundsJoues: {} };
+let fiche = { pieces: 0, jours: {}, roundsJoues: {}, xp: 0, stats: {}, jeux: {} };
 let etat = null;
-
-function aujourdhui() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function dejaGagne() {
   return fiche.jours[aujourdhui()] || 0;
@@ -54,6 +51,7 @@ function lancer(round) {
     round: round,
     index: 0,
     serie: 0,
+    serieMax: 0,
     gain: 0,
     bonnes: 0,
     repondues: 0,
@@ -101,6 +99,7 @@ function repondre(i) {
 
   if (i === q.bonne) {
     etat.serie++;
+    if (etat.serie > etat.serieMax) etat.serieMax = etat.serie;
     etat.bonnes++;
     let g = 1;
     if (etat.serie === 3) g += 1;
@@ -136,6 +135,7 @@ async function finir() {
   etat.fini = true;
   const e = etat;
   const avant = fiche.pieces;
+  const xpAvant = totalXp(fiche);
 
   if (e.repondues === 0) {
     afficherAccueil();
@@ -146,39 +146,62 @@ async function finir() {
   $("resultat").textContent = e.bonnes + " bonne(s) réponse(s) sur " + e.round.questions.length;
   $("message").textContent = "Enregistrement...";
 
-  let credite = 0;
-  let message = "";
+  const jour = aujourdhui();
+  const base = "joueurs/" + uid + "/";
+  const gagneAvant = dejaGagne();
+  const st = fiche.stats[jour] || { bonnes: 0, rounds: 0, serie: 0 };
+  const xpGagne = e.deja ? 0 : e.bonnes * 2 + (e.bonnes === e.round.questions.length ? 10 : 0);
 
-  if (e.deja) {
-    message = "Round déjà joué : aucune pièce gagnée.";
-  } else {
-    const reste = Math.max(0, PLAFOND_JOUR - dejaGagne());
+  const maj = {};
+  let credite = 0;
+  if (!e.deja) {
+    const reste = Math.max(0, PLAFOND_JOUR - gagneAvant);
     credite = Math.min(e.gain, reste);
-    const nouveauJour = dejaGagne() + credite;
-    const base = "joueurs/" + uid + "/";
-    const maj = {};
     maj[base + "roundsJoues/" + e.round.id] = true;
     if (credite > 0) {
       maj[base + "pieces"] = fiche.pieces + credite;
-      maj[base + "jours/" + aujourdhui()] = nouveauJour;
+      maj[base + "jours/" + jour] = gagneAvant + credite;
     }
-    try {
-      await update(ref(db), maj);
+    if (xpGagne > 0) maj[base + "xp"] = fiche.xp + xpGagne;
+  }
+  // Statistiques du jour : elles servent à la série de jours et au défi du jour
+  maj[base + "stats/" + jour + "/bonnes"] = st.bonnes + e.bonnes;
+  maj[base + "stats/" + jour + "/rounds"] = st.rounds + 1;
+  maj[base + "stats/" + jour + "/serie"] = Math.max(st.serie, e.serieMax);
+
+  let message = "";
+  try {
+    await update(ref(db), maj);
+    fiche.stats[jour] = {
+      bonnes: st.bonnes + e.bonnes,
+      rounds: st.rounds + 1,
+      serie: Math.max(st.serie, e.serieMax)
+    };
+
+    if (e.deja) {
+      message = "Round déjà joué : aucune pièce ni XP gagnés.";
+    } else {
       fiche.roundsJoues[e.round.id] = true;
+      fiche.xp += xpGagne;
       if (credite > 0) {
         fiche.pieces += credite;
-        fiche.jours[aujourdhui()] = nouveauJour;
-      }
-      if (credite > 0) {
-        message = "+" + credite + " 🪙 gagnées" + (credite < e.gain ? " (plafond du jour atteint)" : "");
+        fiche.jours[jour] = gagneAvant + credite;
+        message = "+" + credite + " 🪙" + (credite < e.gain ? " (plafond du jour atteint)" : "");
       } else if (e.gain === 0) {
         message = "Aucune pièce gagnée cette fois.";
       } else {
         message = "Plafond du jour atteint : aucune pièce ajoutée.";
       }
-    } catch (err) {
-      message = "Erreur d’enregistrement : " + err.message;
+      if (xpGagne > 0) message += " · +" + xpGagne + " XP";
+
+      const apres = gradeDe(totalXp(fiche));
+      if (apres.index > gradeDe(xpAvant).index) {
+        message += " · 🎖️ Nouveau grade : " + apres.grade.nom + " !";
+        Sons.victoire();
+      }
     }
+  } catch (err) {
+    message = "Erreur d’enregistrement : " + err.message;
   }
 
   $("message").textContent = message;
@@ -196,13 +219,16 @@ async function demarrer() {
       maj["joueurs/" + uid + "/pieces"] = 0;
       maj["joueurs/" + uid + "/creeLe"] = Date.now();
       await update(ref(db), maj);
-      fiche = { pieces: 0, jours: {}, roundsJoues: {} };
+      fiche = { pieces: 0, jours: {}, roundsJoues: {}, xp: 0, stats: {}, jeux: {} };
     } else {
       const v = snap.val();
       fiche = {
         pieces: v.pieces || 0,
         jours: v.jours || {},
-        roundsJoues: v.roundsJoues || {}
+        roundsJoues: v.roundsJoues || {},
+        xp: v.xp || 0,
+        stats: v.stats || {},
+        jeux: v.jeux || {}
       };
     }
     afficherAccueil();
