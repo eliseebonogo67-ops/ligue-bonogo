@@ -18,11 +18,12 @@
   <p id="titre-joueur" class="xp"></p>
 
   <div class="grade">
-    <span class="badge">🛡️</span>
-    <div class="jauge"><div class="jauge-plein" style="width: 35%;"></div></div>
-    <span class="badge">⭐</span>
+    <span id="badge-grade" class="badge">🛡️</span>
+    <div class="jauge"><div id="jauge-plein" class="jauge-plein" style="width: 0%;"></div></div>
+    <span id="badge-suivant" class="badge">🪖</span>
   </div>
-  <p class="xp">70 / 200 XP</p>
+  <p id="xp-texte" class="xp">…</p>
+  <p id="serie-jours" class="xp"></p>
 
   <div class="rangee">
     <div class="lib"><a class="icone" href="boutique.html" style="display: grid; place-items: center; text-decoration: none;">🛍️</a>Boutique</div>
@@ -30,7 +31,7 @@
   </div>
   <div class="rangee" style="margin-top: 18px;">
     <div class="lib"><button class="icone">🎖️</button>Palmarès</div>
-    <div class="lib"><button class="icone">🎁<i class="point"></i></button>Défi du jour</div>
+    <div class="lib"><button id="btn-defi" class="icone">🎁<i id="point-defi" class="point"></i></button>Défi du jour</div>
   </div>
 
   <nav class="menu">
@@ -45,35 +46,130 @@
 
 </div>
 
+<div id="fond-defi" class="fond" hidden>
+  <div class="popup">
+    <div class="ruban">DÉFI DU JOUR</div>
+    <button id="fermer-defi" class="croix" aria-label="Fermer">✕</button>
+    <p id="defi-texte" style="text-align: center; font-weight: 800; font-size: 17px; margin: 6px 0;"></p>
+    <div class="jauge" style="margin: 14px 0 6px;"><div id="defi-jauge" class="jauge-plein" style="width: 0%;"></div></div>
+    <p id="defi-progres" class="xp"></p>
+    <button id="btn-reclamer" class="btn vert" style="margin-top: 14px;" disabled>Pas encore accompli</button>
+    <a class="btn jaune" href="index.html" style="margin-top: 16px; font-size: 17px; padding: 12px;">📚 M’entraîner</a>
+    <p id="defi-msg" class="message"></p>
+  </div>
+</div>
+
 <script type="module">
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { animerCompteur } from "./sons.js";
+import { Sons, animerCompteur } from "./sons.js";
+import { aujourdhui, gradeDe, totalXp, calculerSerie, defiDuJour, progresDefi } from "./progression.js";
 
-const soldeEl = document.getElementById("solde");
-const msg = document.getElementById("msg-test");
+const $ = function (id) {
+  return document.getElementById(id);
+};
+
 let uid = null;
+let v = {};
 
-async function lireSolde() {
-  const snap = await get(ref(db, "joueurs/" + uid + "/pieces"));
-  const v = snap.exists() ? snap.val() : 0;
-  soldeEl.textContent = v;
-  return v;
+function afficherProgression() {
+  $("solde").textContent = v.pieces || 0;
+
+  const xp = totalXp(v);
+  const g = gradeDe(xp);
+  $("badge-grade").textContent = g.grade.emoji;
+  $("badge-suivant").textContent = g.suivant ? g.suivant.emoji : "⭐";
+  $("jauge-plein").style.width = g.pct + "%";
+  $("xp-texte").textContent = g.suivant
+    ? g.grade.nom + " · " + xp + " / " + g.suivant.xp + " XP"
+    : g.grade.nom + " · " + xp + " XP (grade maximum)";
+
+  const s = calculerSerie(v, aujourdhui());
+  if (s.serie > 0) {
+    $("serie-jours").textContent =
+      "🔥 " + s.serie + " jour" + (s.serie > 1 ? "s" : "") + " d’affilée" +
+      (s.aujourdhuiFait ? " ✓" : " · joue aujourd’hui pour la garder");
+  } else {
+    $("serie-jours").textContent = "Joue aujourd’hui pour lancer ta série 🔥";
+  }
+}
+
+function afficherDefi() {
+  const jour = aujourdhui();
+  const d = defiDuJour(jour);
+  const p = progresDefi(d, v, jour);
+  const reclame = !!(v.defi && v.defi[jour]);
+
+  $("defi-texte").textContent = d.texte;
+  $("defi-jauge").style.width = Math.round((p / d.cible) * 100) + "%";
+  $("defi-progres").textContent = p + " / " + d.cible + " · récompense : " + d.recompense + " 🪙";
+
+  const b = $("btn-reclamer");
+  if (reclame) {
+    b.textContent = "Récompense récupérée ✓";
+    b.disabled = true;
+  } else if (p >= d.cible) {
+    b.textContent = "Récupérer " + d.recompense + " 🪙";
+    b.disabled = false;
+  } else {
+    b.textContent = "Pas encore accompli";
+    b.disabled = true;
+  }
+  $("point-defi").hidden = reclame;
+}
+
+async function charger() {
+  const snap = await get(ref(db, "joueurs/" + uid));
+  v = snap.exists() ? snap.val() : {};
+  afficherProgression();
+  afficherDefi();
+}
+
+async function reclamer() {
+  const jour = aujourdhui();
+  const d = defiDuJour(jour);
+  if ((v.defi && v.defi[jour]) || progresDefi(d, v, jour) < d.cible) return;
+
+  const avant = v.pieces || 0;
+  const maj = {};
+  maj["joueurs/" + uid + "/pieces"] = avant + d.recompense;
+  maj["joueurs/" + uid + "/defi/" + jour] = true;
+  try {
+    await update(ref(db), maj);
+    v.pieces = avant + d.recompense;
+    v.defi = v.defi || {};
+    v.defi[jour] = true;
+    animerCompteur($("solde"), avant, v.pieces, 900);
+    afficherDefi();
+    $("defi-msg").textContent = "+" + d.recompense + " 🪙 !";
+  } catch (e) {
+    $("defi-msg").textContent = "Erreur : " + (e.code || e.message);
+  }
 }
 
 async function demarrer() {
   try {
     const cred = await signInAnonymously(auth);
     uid = cred.user.uid;
-    await lireSolde();
+    await charger();
   } catch (e) {
-    soldeEl.textContent = "?";
-    msg.textContent = "Erreur : " + (e.code || e.message);
+    $("solde").textContent = "?";
+    $("msg-test").textContent = "Erreur : " + (e.code || e.message);
   }
 }
 
-document.getElementById("btn-test").addEventListener("click", async function () {
+$("btn-defi").addEventListener("click", function () {
+  afficherDefi();
+  $("defi-msg").textContent = "";
+  $("fond-defi").hidden = false;
+});
+$("fermer-defi").addEventListener("click", function () {
+  $("fond-defi").hidden = true;
+});
+$("btn-reclamer").addEventListener("click", reclamer);
+
+$("btn-test").addEventListener("click", async function () {
   if (!uid) return;
   try {
     const base = "joueurs/" + uid + "/";
@@ -88,14 +184,15 @@ document.getElementById("btn-test").addEventListener("click", async function () 
     const m2 = {};
     m2[base + "pieces"] = actuel + 50;
     await update(ref(db), m2);
-    animerCompteur(soldeEl, actuel, actuel + 50, 1000);
-    msg.textContent = "+50 pièces de test ajoutées.";
+    v.pieces = actuel + 50;
+    animerCompteur($("solde"), actuel, actuel + 50, 1000);
+    $("msg-test").textContent = "+50 pièces de test ajoutées.";
   } catch (e) {
-    msg.textContent = "Erreur : " + (e.code || e.message);
+    $("msg-test").textContent = "Erreur : " + (e.code || e.message);
   }
 });
 
 demarrer();
 </script>
 </body>
-    </html>
+                                                                                                                 </html>
