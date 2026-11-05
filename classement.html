@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Classement</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .retour {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900;
+  }
+  .alerte {
+    min-height: 18px;
+    margin: 10px 0 0;
+    text-align: center;
+    color: #ff8a80;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .moi {
+    margin: 16px 0 6px;
+    padding: 12px;
+    border-radius: 16px;
+    border: 2px solid #7be046;
+    background: rgba(40, 120, 60, 0.35);
+    text-align: center;
+    font-weight: 800;
+    font-size: 15px;
+  }
+  .moi small {
+    display: block;
+    margin-top: 4px;
+    color: #cfd6ff;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .moi a {
+    color: #ffd54a;
+  }
+  .rang {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 16px;
+    border: 2px solid var(--bord);
+    background: rgba(10, 18, 90, 0.75);
+  }
+  .rang.cest-moi {
+    border-color: #7be046;
+  }
+  .num {
+    flex: none;
+    width: 34px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 900;
+    color: #ffd54a;
+  }
+  .mini {
+    flex: none;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 3px solid var(--or);
+    background: linear-gradient(#2c3fb8, #121c70);
+    display: grid;
+    place-items: center;
+    font-size: 24px;
+  }
+  .texte {
+    flex: 1;
+    min-width: 0;
+  }
+  .texte b {
+    display: block;
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .texte span {
+    font-size: 12px;
+    color: #aab4ff;
+  }
+  .points {
+    flex: none;
+    text-align: right;
+    font-weight: 900;
+    color: #ffd54a;
+    font-size: 15px;
+  }
+  .points small {
+    display: block;
+    font-size: 11px;
+    color: #aab4ff;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<div class="ecran">
+
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <b>🏅 Classement</b>
+    <span style="width: 62px;"></span>
+  </header>
+
+  <p id="alerte" class="alerte"></p>
+
+  <div id="moi" class="moi">Chargement…</div>
+  <div id="liste"></div>
+
+  <p class="message">Classement par XP (les 50 premiers). Les joueurs apparaissent après avoir ouvert l’application avec la dernière version.</p>
+  <div style="height: 70px;"></div>
+
+</div>
+
+<script>
+  window.addEventListener("error", function (e) {
+    var a = document.getElementById("alerte");
+    if (a) a.textContent = "Erreur : " + (e.message || "chargement impossible");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var a = document.getElementById("alerte");
+    var r = e.reason;
+    if (a) a.textContent = "Erreur : " + (r && r.message ? r.message : r);
+  });
+</script>
+
+<script type="module">
+import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import {
+  ref,
+  get,
+  query,
+  orderByChild,
+  limitToLast,
+  startAt
+} from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { auth, db } from "./firebase.js";
+import { article, RARETES, DEFAUTS } from "./profil.js";
+import { gradeDe, totalXp } from "./progression.js";
+
+const $ = function (id) {
+  return document.getElementById(id);
+};
+
+let uid = null;
+
+function nomDe(p, id) {
+  return p.pseudo || "Joueur " + id.slice(-4).toUpperCase();
+}
+
+function ligne(rang, id, p) {
+  const animal = article(p.animal) || article(DEFAUTS.animal);
+  const titre = article(p.titre) || article(DEFAUTS.titre);
+  const r = RARETES[animal.rarete];
+  const xp = p.xp || 0;
+  const g = gradeDe(xp);
+
+  const div = document.createElement("div");
+  div.className = "rang" + (id === uid ? " cest-moi" : "");
+
+  const num = document.createElement("div");
+  num.className = "num";
+  num.textContent = rang === 1 ? "🥇" : rang === 2 ? "🥈" : rang === 3 ? "🥉" : rang;
+
+  const mini = document.createElement("div");
+  mini.className = "mini";
+  mini.textContent = animal.emoji;
+  mini.style.borderColor = r.couleur;
+  mini.style.boxShadow = r.ombre;
+
+  const texte = document.createElement("div");
+  texte.className = "texte";
+  const nom = document.createElement("b");
+  nom.textContent = nomDe(p, id);
+  const sous = document.createElement("span");
+  sous.textContent = titre.texte + " · " + g.grade.emoji + " " + g.grade.nom;
+  texte.appendChild(nom);
+  texte.appendChild(sous);
+
+  const pts = document.createElement("div");
+  pts.className = "points";
+  pts.textContent = xp;
+  const petit = document.createElement("small");
+  petit.textContent = "XP";
+  pts.appendChild(petit);
+
+  div.appendChild(num);
+  div.appendChild(mini);
+  div.appendChild(texte);
+  div.appendChild(pts);
+  return div;
+}
+
+async function demarrer() {
+  try {
+    const cred = await signInAnonymously(auth);
+    uid = cred.user.uid;
+
+    // Les 50 meilleurs
+    const snap = await get(query(ref(db, "profils"), orderByChild("xp"), limitToLast(50)));
+    const liste = [];
+    snap.forEach(function (c) {
+      liste.push({ id: c.key, p: c.val() });
+    });
+    liste.sort(function (a, b) {
+      return (b.p.xp || 0) - (a.p.xp || 0);
+    });
+
+    const zone = $("liste");
+    zone.innerHTML = "";
+    if (liste.length === 0) {
+      const vide = document.createElement("p");
+      vide.className = "message";
+      vide.textContent = "Personne dans le classement pour le moment.";
+      zone.appendChild(vide);
+    }
+    liste.forEach(function (e, i) {
+      zone.appendChild(ligne(i + 1, e.id, e.p));
+    });
+
+    // Mon rang
+    const sj = await get(ref(db, "joueurs/" + uid));
+    const v = sj.exists() ? sj.val() : {};
+    const xpMoi = totalXp(v);
+    const sMoi = await get(ref(db, "profils/" + uid));
+    const pMoi = sMoi.exists() ? sMoi.val() : {};
+    const meilleurs = await get(query(ref(db, "profils"), orderByChild("xp"), startAt(xpMoi + 1)));
+    const rang = meilleurs.numChildren() + 1;
+
+    const moi = $("moi");
+    moi.innerHTML = "";
+    const titre = document.createElement("div");
+    titre.textContent = "Ton rang : " + rang + " · " + xpMoi + " XP";
+    moi.appendChild(titre);
+    if (!pMoi.pseudo) {
+      const aide = document.createElement("small");
+      aide.appendChild(document.createTextNode("Tu n’as pas encore de pseudo. "));
+      const lien = document.createElement("a");
+      lien.href = "profil.html";
+      lien.textContent = "Choisis-le ici";
+      aide.appendChild(lien);
+      moi.appendChild(aide);
+    }
+  } catch (e) {
+    $("alerte").textContent = "Impossible de charger le classement : " + (e.code || e.message);
+    $("moi").textContent = "";
+  }
+}
+
+demarrer();
+</script>
+</body>
+  </html>
