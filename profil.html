@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Mon profil</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .retour {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900;
+  }
+  .alerte {
+    min-height: 18px;
+    margin: 10px 0 0;
+    text-align: center;
+    color: #ff8a80;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .profil {
+    margin: 22px 0 6px;
+    text-align: center;
+  }
+  .profil .avatar {
+    margin: 0 auto 10px;
+    width: 96px;
+    height: 96px;
+    font-size: 50px;
+  }
+  .profil .nom {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 900;
+  }
+  .profil .xp {
+    margin: 4px 0 0;
+    color: #ffd54a;
+    font-weight: 800;
+  }
+  .bloc {
+    margin: 46px auto 0;
+  }
+  label {
+    display: block;
+    margin: 0 0 6px 4px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--texte-doux);
+  }
+  input {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    margin-bottom: 14px;
+    border-radius: 14px;
+    border: 3px solid var(--or);
+    background: #0b1250;
+    color: #fff;
+    font-family: inherit;
+    font-size: 20px;
+    font-weight: 800;
+    text-align: center;
+  }
+  .aide {
+    margin: 0 0 12px;
+    color: #cfd6ff;
+    font-size: 12px;
+    text-align: center;
+  }
+  .liens {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 26px;
+  }
+</style>
+</head>
+<body>
+<div class="ecran">
+
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <b>Mon profil</b>
+    <span style="width: 62px;"></span>
+  </header>
+
+  <p id="alerte" class="alerte"></p>
+
+  <div class="profil">
+    <div class="avatar">🧑‍🎓</div>
+    <p id="nom" class="nom">…</p>
+    <p id="titre-joueur" class="xp"></p>
+    <p id="grade" class="xp"></p>
+  </div>
+
+  <section class="popup bloc">
+    <div class="ruban">PSEUDO</div>
+    <label for="pseudo">Ton pseudo (vu par les autres joueurs)</label>
+    <input id="pseudo" maxlength="16" placeholder="Ex : Aziz" autocomplete="off">
+    <p class="aide">3 à 16 caractères : lettres, chiffres, espaces, _ et -. Les accents sont retirés.</p>
+    <button id="btn-enregistrer" class="btn vert" style="font-size: 18px; padding: 14px;">Enregistrer</button>
+  </section>
+
+  <p id="msg" class="message"></p>
+
+  <div class="liens">
+    <a class="btn jaune" href="boutique.html" style="font-size: 17px; padding: 14px;">🛍️ Changer d’animal ou de titre</a>
+    <a class="btn bleu" href="classement.html" style="font-size: 17px; padding: 14px;">🏅 Voir le classement</a>
+  </div>
+
+</div>
+
+<script>
+  window.addEventListener("error", function (e) {
+    var a = document.getElementById("alerte");
+    if (a) a.textContent = "Erreur : " + (e.message || "chargement impossible");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var a = document.getElementById("alerte");
+    var r = e.reason;
+    if (a) a.textContent = "Erreur : " + (r && r.message ? r.message : r);
+  });
+</script>
+
+<script type="module">
+import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { auth, db } from "./firebase.js";
+import { gradeDe, totalXp } from "./progression.js";
+import { Sons } from "./sons.js";
+
+const $ = function (id) {
+  return document.getElementById(id);
+};
+
+let uid = null;
+let pseudoActuel = "";
+
+function dire(texte) {
+  $("msg").textContent = texte;
+}
+
+// Retire les accents et les espaces en trop
+function normaliser(texte) {
+  return texte
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// La clé qui garantit qu'un pseudo n'est pris que par un seul joueur
+function cle(pseudo) {
+  return pseudo.toLowerCase().replace(/ /g, "_");
+}
+
+async function enregistrer() {
+  const nouveau = normaliser($("pseudo").value);
+  if (!/^[A-Za-z0-9 _-]{3,16}$/.test(nouveau)) {
+    Sons.faux();
+    dire("Pseudo invalide : 3 à 16 caractères, lettres, chiffres, espaces, _ ou -.");
+    return;
+  }
+  if (nouveau === pseudoActuel) {
+    dire("C’est déjà ton pseudo.");
+    return;
+  }
+
+  const kNouveau = cle(nouveau);
+  const kAncien = pseudoActuel ? cle(pseudoActuel) : null;
+  const maj = {};
+  if (kNouveau !== kAncien) {
+    maj["pseudos/" + kNouveau] = uid;
+    if (kAncien) maj["pseudos/" + kAncien] = null;
+  }
+  maj["profils/" + uid + "/pseudo"] = nouveau;
+
+  try {
+    await update(ref(db), maj);
+    pseudoActuel = nouveau;
+    $("pseudo").value = nouveau;
+    $("nom").textContent = nouveau;
+    Sons.bon();
+    dire("Pseudo enregistré : " + nouveau);
+  } catch (e) {
+    Sons.faux();
+    if (e.code === "PERMISSION_DENIED") dire("Ce pseudo est déjà pris. Essaie-en un autre.");
+    else dire("Enregistrement impossible : " + (e.code || e.message));
+  }
+}
+
+async function demarrer() {
+  try {
+    const cred = await signInAnonymously(auth);
+    uid = cred.user.uid;
+
+    const [sp, sj] = await Promise.all([
+      get(ref(db, "profils/" + uid)),
+      get(ref(db, "joueurs/" + uid))
+    ]);
+    const p = sp.exists() ? sp.val() : {};
+    const v = sj.exists() ? sj.val() : {};
+
+    pseudoActuel = p.pseudo || "";
+    $("pseudo").value = pseudoActuel;
+    $("nom").textContent = pseudoActuel || "Choisis ton pseudo";
+
+    const xp = totalXp(v);
+    const g = gradeDe(xp);
+    $("grade").textContent = g.grade.emoji + " " + g.grade.nom + " · " + xp + " XP";
+  } catch (e) {
+    $("alerte").textContent = "Connexion impossible : " + (e.code || e.message);
+  }
+}
+
+$("btn-enregistrer").addEventListener("click", enregistrer);
+demarrer();
+</script>
+</body>
+</html>
