@@ -13,6 +13,7 @@ import { calculerTournoi } from "./partiemoteur.js";
 import { ouvrirCycle, prolonger } from "./cycles.js";
 import { initHorloge, maintenant } from "./horloge.js";
 import { Sons } from "./sons.js";
+import { article, DEFAUTS } from "./profil.js";
 
 const params = new URLSearchParams(window.location.search);
 const salonId = params.get("s");
@@ -40,6 +41,9 @@ let finSonJoue = false;
 let entreeSonJoue = false;
 let classementOuvert = false;
 let signatureClassement = "";
+let profils = {};
+let profilsDemandes = {};
+let versionProfils = 0;
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -56,9 +60,34 @@ function listeJoueurs() {
   });
 }
 
+// Charge une seule fois l'animal et le pseudo de chaque joueur
+function chargerProfils(ids) {
+  ids.forEach(function (id) {
+    if (profilsDemandes[id]) return;
+    profilsDemandes[id] = true;
+    get(ref(db, "profils/" + id))
+      .then(function (snap) {
+        profils[id] = snap.exists() ? snap.val() : {};
+        versionProfils++;
+      })
+      .catch(function () {
+        profils[id] = {};
+      });
+  });
+}
+
+function emojiAnimal(p) {
+  const a = article(p && p.animal ? p.animal : DEFAUTS.animal) || article(DEFAUTS.animal);
+  return a.emoji;
+}
+
 function nomJoueur(id) {
-  if (id === uid) return "Toi";
-  return "Joueur " + (listeJoueurs().indexOf(id) + 1);
+  const p = profils[id];
+  if (id === uid) return (p ? emojiAnimal(p) + " " : "") + "Toi";
+  const base = "Joueur " + (listeJoueurs().indexOf(id) + 1);
+  if (p && p.pseudo) return emojiAnimal(p) + " " + p.pseudo;
+  if (p && p.animal) return emojiAnimal(p) + " " + base;
+  return base;
 }
 
 function miseDe(id) {
@@ -123,7 +152,7 @@ function afficherClassement(scores, enJeu, tous, marques) {
   });
 
   // On ne redessine que si quelque chose a changé (les boutons restent cliquables)
-  const signature = JSON.stringify([ordre, scores, marques, enJeu, classementOuvert]);
+  const signature = JSON.stringify([ordre, scores, marques, enJeu, classementOuvert, versionProfils]);
   if (signature === signatureClassement) return;
   signatureClassement = signature;
   zone.innerHTML = "";
@@ -388,6 +417,7 @@ function afficher() {
   const tous = listeJoueurs();
   const round = ROUNDS[salon.round] || ROUNDS[0];
   $("cagnotte").textContent = pot();
+  chargerProfils(tous);
 
   if (tous.indexOf(uid) === -1) {
     $("retour").hidden = false;
