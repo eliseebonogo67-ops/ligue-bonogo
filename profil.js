@@ -1,4 +1,5 @@
-// Catalogue de la boutique (articles uniquement décoratifs) et application du profil
+// Catalogue de la boutique (articles uniquement décoratifs), application et publication du profil
+import { totalXp } from "./progression.js";
 
 export const CATEGORIES = [
   { id: "animal", nom: "Animaux", emoji: "🐾" },
@@ -54,8 +55,9 @@ export const ARTICLES = [
 ];
 
 const CACHE = "ligue_profil";
+const CACHE_PUB = "ligue_pub";
 
-function article(id) {
+export function article(id) {
   return ARTICLES.find(function (a) {
     return a.id === id;
   });
@@ -105,6 +107,31 @@ export function memoriser(equipe) {
   });
 }
 
+// Publie le profil public (animal, titre, XP) quand quelque chose a changé
+async function publier(uid, v, fb, dbMod) {
+  const equipe = v.equipe || {};
+  const animal = equipe.animal || DEFAUTS.animal;
+  const titre = equipe.titre || DEFAUTS.titre;
+  const xp = totalXp(v);
+  const signature = uid + "|" + animal + "|" + titre + "|" + xp;
+  try {
+    if (localStorage.getItem(CACHE_PUB) === signature) return;
+  } catch (e) {
+    // sans importance
+  }
+  const maj = {};
+  maj["profils/" + uid + "/animal"] = animal;
+  maj["profils/" + uid + "/titre"] = titre;
+  maj["profils/" + uid + "/xp"] = xp;
+  maj["profils/" + uid + "/maj"] = Date.now();
+  await dbMod.update(dbMod.ref(fb.db), maj);
+  try {
+    localStorage.setItem(CACHE_PUB, signature);
+  } catch (e) {
+    // sans importance
+  }
+}
+
 // Appelée par firebase.js : applique d'abord la mémoire, puis la version enregistrée
 export async function appliquerProfil() {
   let cache = {};
@@ -122,8 +149,11 @@ export async function appliquerProfil() {
     const authMod = await import("https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js");
     const dbMod = await import("https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js");
     const cred = await authMod.signInAnonymously(fb.auth);
-    const snap = await dbMod.get(dbMod.ref(fb.db, "joueurs/" + cred.user.uid + "/equipe"));
-    memoriser(snap.exists() ? snap.val() : {});
+    const uid = cred.user.uid;
+    const snap = await dbMod.get(dbMod.ref(fb.db, "joueurs/" + uid));
+    const v = snap.exists() ? snap.val() : {};
+    memoriser(v.equipe || {});
+    await publier(uid, v, fb, dbMod);
   } catch (e) {
     // sans connexion, on garde la version en mémoire
   }
