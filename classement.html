@@ -202,6 +202,17 @@ function ligne(rang, id, p) {
   return div;
 }
 
+// Nombre d'enfants d'un résultat (la propriété s'appelle size dans le SDK modulaire)
+function compter(snap) {
+  if (typeof snap.size === "number") return snap.size;
+  if (typeof snap.numChildren === "function") return snap.numChildren();
+  let n = 0;
+  snap.forEach(function () {
+    n++;
+  });
+  return n;
+}
+
 async function demarrer() {
   try {
     const cred = await signInAnonymously(auth);
@@ -236,7 +247,7 @@ async function demarrer() {
     const sMoi = await get(ref(db, "profils/" + uid));
     const pMoi = sMoi.exists() ? sMoi.val() : {};
     const meilleurs = await get(query(ref(db, "profils"), orderByChild("xp"), startAt(xpMoi + 1)));
-    const rang = meilleurs.numChildren() + 1;
+    const rang = compter(meilleurs) + 1;
 
     const moi = $("moi");
     moi.innerHTML = "";
