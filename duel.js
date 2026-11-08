@@ -10,6 +10,7 @@ import { auth, db } from "./firebase.js";
 import { ROUNDS } from "./rounds.js";
 import { initHorloge, maintenant } from "./horloge.js";
 import { Sons } from "./sons.js";
+import { article, DEFAUTS } from "./profil.js";
 
 // ===== Moteur du duel (réglages modifiables pour les tests) =====
 const DUREE_CULTURE_S = 30;
@@ -129,6 +130,7 @@ let dernierTic = "";
 let sonsJoues = {};
 let departJoue = false;
 let finSonJoue = false;
+let nomsCharges = false;
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -140,6 +142,29 @@ function erreur(e) {
 
 function uidAdv() {
   return slot === 1 ? data.j2 : data.j1;
+}
+
+function emojiAnimal(p) {
+  const a = article(p && p.animal ? p.animal : DEFAUTS.animal) || article(DEFAUTS.animal);
+  return a.emoji;
+}
+
+// Le pseudo et l'animal des deux joueurs, chargés une seule fois
+async function chargerNoms() {
+  if (nomsCharges || !data.j1 || !data.j2) return;
+  nomsCharges = true;
+  try {
+    const snaps = await Promise.all([
+      get(ref(db, "profils/" + uid)),
+      get(ref(db, "profils/" + uidAdv()))
+    ]);
+    const pm = snaps[0].exists() ? snaps[0].val() : {};
+    const pa = snaps[1].exists() ? snaps[1].val() : {};
+    $("nom-moi").textContent = emojiAnimal(pm) + " Toi";
+    $("nom-adv").textContent = emojiAnimal(pa) + " " + (pa.pseudo || "Adversaire");
+  } catch (e) {
+    // les noms restent « Toi » et « Adversaire »
+  }
 }
 
 function maReponse(i) {
@@ -378,6 +403,7 @@ function afficher() {
     return;
   }
 
+  chargerNoms();
   payerMise();
 
   if (!data.lanceLe) {
