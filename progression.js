@@ -1,4 +1,4 @@
-// XP, grades, série de jours et défi du jour
+// XP, grades, série de jours, défi du jour et semaines du palmarès
 
 export const GRADES = [
   { nom: "Recrue", xp: 0, emoji: "🛡️" },
@@ -103,4 +103,28 @@ export function progresDefi(defi, v, date) {
   else if (defi.source === "serie") p = s.serie || 0;
   else if (defi.source === "jeux") p = (v.jeux && v.jeux[date]) || 0;
   return Math.min(p, defi.cible);
-  }
+}
+
+// Identifiant de la semaine (du lundi au dimanche), par exemple 2026-W46
+export function semaineId(date) {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const jour = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - jour);
+  const debutAnnee = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const numero = Math.ceil(((d - debutAnnee) / 86400000 + 1) / 7);
+  return d.getUTCFullYear() + "-W" + String(numero).padStart(2, "0");
+}
+
+// La semaine d'il y a n semaines (0 = cette semaine)
+export function semaineIl(n) {
+  return semaineId(new Date(Date.now() - n * 7 * 86400000));
+}
+
+// Temps restant avant la fin de la semaine (lundi 00 h, heure universelle)
+export function resteSemaine() {
+  const d = new Date();
+  const jour = d.getUTCDay() || 7;
+  const fin = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + (8 - jour));
+  const ms = Math.max(0, fin - Date.now());
+  return { jours: Math.floor(ms / 86400000), heures: Math.floor((ms % 86400000) / 3600000) };
+}
