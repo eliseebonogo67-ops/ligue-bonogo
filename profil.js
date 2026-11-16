@@ -1,5 +1,5 @@
 // Catalogue de la boutique (articles uniquement décoratifs), application et publication du profil
-import { totalXp } from "./progression.js";
+import { totalXp, semaineId } from "./progression.js";
 
 export const CATEGORIES = [
   { id: "animal", nom: "Animaux", emoji: "🐾" },
@@ -107,23 +107,46 @@ export function memoriser(equipe) {
   });
 }
 
-// Publie le profil public (animal, titre, XP) quand quelque chose a changé
+// Publie le profil public et le gain de la semaine quand quelque chose a changé
 async function publier(uid, v, fb, dbMod) {
   const equipe = v.equipe || {};
   const animal = equipe.animal || DEFAUTS.animal;
   const titre = equipe.titre || DEFAUTS.titre;
   const xp = totalXp(v);
-  const signature = uid + "|" + animal + "|" + titre + "|" + xp;
+
+  // Le gain de la semaine : l'XP d'aujourd'hui moins l'XP au premier passage de la semaine
+  const sem = semaineId(new Date());
+  const maj = {};
+  let base = v.base && typeof v.base[sem] === "number" ? v.base[sem] : null;
+  if (base === null) {
+    base = xp;
+    maj["joueurs/" + uid + "/base/" + sem] = xp;
+  }
+  const gain = Math.max(0, xp - base);
+
+  let pseudo = "";
+  const sp = await dbMod.get(dbMod.ref(fb.db, "profils/" + uid + "/pseudo"));
+  if (sp.exists()) pseudo = sp.val();
+
+  const signature = [uid, animal, titre, xp, sem, gain, pseudo].join("|");
   try {
     if (localStorage.getItem(CACHE_PUB) === signature) return;
   } catch (e) {
     // sans importance
   }
-  const maj = {};
+
   maj["profils/" + uid + "/animal"] = animal;
   maj["profils/" + uid + "/titre"] = titre;
   maj["profils/" + uid + "/xp"] = xp;
   maj["profils/" + uid + "/maj"] = Date.now();
+
+  const p = "palmares/" + sem + "/" + uid + "/";
+  maj[p + "gain"] = gain;
+  maj[p + "animal"] = animal;
+  maj[p + "titre"] = titre;
+  if (pseudo) maj[p + "pseudo"] = pseudo;
+  maj[p + "maj"] = Date.now();
+
   await dbMod.update(dbMod.ref(fb.db), maj);
   try {
     localStorage.setItem(CACHE_PUB, signature);
@@ -157,4 +180,4 @@ export async function appliquerProfil() {
   } catch (e) {
     // sans connexion, on garde la version en mémoire
   }
-   }
+  }
