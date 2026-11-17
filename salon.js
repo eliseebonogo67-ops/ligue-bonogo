@@ -2,6 +2,7 @@ import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/fir
 import {
   ref,
   get,
+  set,
   onValue,
   update,
   runTransaction
@@ -14,6 +15,7 @@ import { initHorloge, maintenant } from "./horloge.js";
 
 const MAX_PARTIES_JOUR = 10;
 const MAX_JEU_MS = 910000;
+const DELAI_REPARATION_MS = 8000;
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -25,6 +27,7 @@ const courants = {};
 const salons = {};
 const abonnements = {};
 const occupe = {};
+const desaccords = {};
 const cartes = {};
 
 function dire(texte) {
@@ -99,7 +102,7 @@ function majCartes() {
     } else if (n >= 2) {
       statut = "Départ…";
     } else {
-      statut = "En attente de joueurs (minimum 2)…";
+      statut = "Réouverture des inscriptions…";
     }
     c.statut.textContent = statut;
 
@@ -116,7 +119,7 @@ function majCartes() {
         rejoindre(f.id);
       };
     } else {
-      b.textContent = ouverte ? "Complète" : "Fermée";
+      b.textContent = ouverte ? "Complète" : "Patiente…";
       b.disabled = true;
     }
   });
@@ -190,13 +193,37 @@ function suivre(fid, id) {
   abonnements[fid] = { id: id, stop: stop };
 }
 
-// Entretien du cycle : ouvrir la salle suivante, prolonger l'attente
+// Le compteur de places peut se désynchroniser : on le recale sur le vrai nombre d'inscrits
+function surveillerCompteur(fid, id, s, now) {
+  const n = nbJoueurs(s);
+  const nb = s.nb || 0;
+  if (s.lanceLe || nb === n) {
+    delete desaccords[fid];
+    return;
+  }
+  const d = desaccords[fid];
+  if (!d || d.id !== id || d.nb !== nb || d.n !== n) {
+    desaccords[fid] = { id: id, nb: nb, n: n, depuis: now };
+    return;
+  }
+  if (now - d.depuis >= DELAI_REPARATION_MS) {
+    delete desaccords[fid];
+    set(ref(db, "salons/" + id + "/nb"), n).catch(function () {
+      // un autre téléphone l'a déjà réparé
+    });
+  }
+}
+
+// Entretien du cycle : ouvrir la salle suivante, prolonger l'attente, réparer
 function entretien() {
   const now = maintenant();
   FORMATS.forEach(function (f) {
-    if (occupe[f.id] && now - occupe[f.id] < 4000) return;
     const id = courants[f.id];
     const s = salons[f.id];
+
+    if (id && s) surveillerCompteur(f.id, id, s, now);
+
+    if (occupe[f.id] && now - occupe[f.id] < 4000) return;
     let action = null;
 
     if (id === null) {
@@ -216,7 +243,7 @@ function entretien() {
         action = function () {
           ouvrirCycle(f.id, now, ROUNDS.length);
         };
-      } else if (!s.lanceLe && now >= s.ferme && (s.nb || 0) < 2) {
+      } else if (!s.lanceLe && now >= s.ferme && nbJoueurs(s) < 2) {
         action = function () {
           prolonger(id, s.ferme, now);
         };
