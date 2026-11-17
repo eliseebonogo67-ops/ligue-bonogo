@@ -101,6 +101,62 @@ function calculer(rnd, donnees, now) {
   return { plan: plan, resultats: resultats, v1: v1, v2: v2 };
 }
 
+// ===== Sujets déjà vus (pour varier les questions) =====
+const CLE_VUS = "ligue_vus";
+const LETTRES = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function lireVus() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CLE_VUS) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function ajouterVu(id) {
+  try {
+    const v = lireVus().filter(function (x) {
+      return x !== id;
+    });
+    v.push(id);
+    localStorage.setItem(CLE_VUS, JSON.stringify(v.slice(-60)));
+  } catch (e) {
+    // sans importance
+  }
+}
+
+// Nouveau code de revanche : même mise, autre sujet (un sujet pas encore vu si possible)
+function nouveauCodeRevanche(ancien) {
+  const vus = lireVus();
+  const tous = ROUNDS.map(function (r, i) {
+    return i;
+  });
+  let candidats = tous.filter(function (i) {
+    return vus.indexOf(ROUNDS[i].id) === -1;
+  });
+  if (candidats.length === 0) {
+    candidats = tous.filter(function (i) {
+      return ROUNDS[i].id !== round.id;
+    });
+  }
+  if (candidats.length === 0) candidats = [0];
+  const idx = candidats[Math.floor(Math.random() * candidats.length)];
+
+  let c = "0" + ancien.charAt(1) + LETTRES.charAt(Math.floor(idx / 32) % 32) + LETTRES.charAt(idx % 32);
+  for (let i = 0; i < 2; i++) {
+    c += LETTRES.charAt(Math.floor(Math.random() * LETTRES.length));
+  }
+  return c;
+}
+
+function roundIdDuCode(code) {
+  const a = LETTRES.indexOf(code.charAt(2));
+  const b = LETTRES.indexOf(code.charAt(3));
+  const r = ROUNDS[a * 32 + b];
+  return r ? r.id : ROUNDS[0].id;
+}
+
 // ===== Écran du duel =====
 const params = new URLSearchParams(window.location.search);
 const matchId = params.get("m");
@@ -110,7 +166,7 @@ const round = ROUNDS.find(function (r) {
 }) || ROUNDS[0];
 const adv = slot === 1 ? 2 : 1;
 
-// Code de défi : round (1 chiffre), mise (0, 1 ou 2) puis 4 lettres
+// Code de défi : "0", mise (0, 1 ou 2), numéro du sujet (2 caractères), 2 lettres au hasard
 function miseDuCode(code) {
   if (!/^[0-9][0-2][A-Z2-9]{4}$/.test(code || "")) return 0;
   return [0, 5, 10][parseInt(code.charAt(1), 10)];
@@ -131,6 +187,12 @@ let sonsJoues = {};
 let departJoue = false;
 let finSonJoue = false;
 let nomsCharges = false;
+let nomAdvTexte = "Adversaire";
+let nomAdvAffiche = "Adversaire";
+let resultatEnregistre = false;
+let faceTexte = "";
+let revancheEnCours = false;
+let revancheSonJouee = false;
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -160,8 +222,10 @@ async function chargerNoms() {
     ]);
     const pm = snaps[0].exists() ? snaps[0].val() : {};
     const pa = snaps[1].exists() ? snaps[1].val() : {};
+    nomAdvTexte = pa.pseudo || "Adversaire";
+    nomAdvAffiche = emojiAnimal(pa) + " " + nomAdvTexte;
     $("nom-moi").textContent = emojiAnimal(pm) + " Toi";
-    $("nom-adv").textContent = emojiAnimal(pa) + " " + (pa.pseudo || "Adversaire");
+    $("nom-adv").textContent = nomAdvAffiche;
   } catch (e) {
     // les noms restent « Toi » et « Adversaire »
   }
@@ -367,6 +431,122 @@ async function regler(vMoi, vAdv) {
   }
 }
 
+function pluriel(n, mot) {
+  return n + " " + mot + (n > 1 ? "s" : "");
+}
+
+// Le bilan est enregistré une seule fois par duel (victoires, défaites, nuls)
+async function enregistrerResultat(vMoi, vAdv) {
+  if (resultatEnregistre) return;
+  resultatEnregistre = true;
+  const autre = uidAdv();
+  const cle = vMoi > vAdv ? "v" : vMoi < vAdv ? "d" : "n";
+  let face = { v: 0, d: 0, n: 0 };
+
+  try {
+    const lectures = await Promise.all([
+      get(ref(db, "joueurs/" + uid + "/face/" + autre)),
+      get(ref(db, "profils/" + uid + "/duels"))
+    ]);
+    const f = lectures[0].exists() ? lectures[0].val() : {};
+    const g = lectures[1].exists() ? lectures[1].val() : {};
+    face = { v: f.v || 0, d: f.d || 0, n: f.n || 0 };
+    const total = { v: g.v || 0, d: g.d || 0, n: g.n || 0 };
+
+    const maj = {};
+    maj["joueurs/" + uid + "/duelsVus/" + matchId] = true;
+    face[cle] += 1;
+    total[cle] += 1;
+    maj["joueurs/" + uid + "/face/" + autre + "/v"] = face.v;
+    maj["joueurs/" + uid + "/face/" + autre + "/d"] = face.d;
+    maj["joueurs/" + uid + "/face/" + autre + "/n"] = face.n;
+    maj["profils/" + uid + "/duels/v"] = total.v;
+    maj["profils/" + uid + "/duels/d"] = total.d;
+    maj["profils/" + uid + "/duels/n"] = total.n;
+    await update(ref(db), maj);
+  } catch (e) {
+    // déjà enregistré (page rechargée) : on relit simplement le bilan
+    try {
+      const s = await get(ref(db, "joueurs/" + uid + "/face/" + autre));
+      const f = s.exists() ? s.val() : {};
+      face = { v: f.v || 0, d: f.d || 0, n: f.n || 0 };
+    } catch (e2) {
+      // sans importance
+    }
+  }
+
+  let texte = "Face à " + nomAdvAffiche + " : " + pluriel(face.v, "victoire") + " – " + pluriel(face.d, "défaite");
+  if (face.n > 0) texte += " – " + pluriel(face.n, "nul");
+
+  try {
+    const sa = await get(ref(db, "profils/" + autre + "/duels"));
+    if (sa.exists()) {
+      const a = sa.val();
+      texte += "\n" + nomAdvTexte + " en tout : " + (a.v || 0) + " V · " + (a.d || 0) + " D";
+    }
+  } catch (e) {
+    // sans importance
+  }
+  faceTexte = texte;
+}
+
+// ===== Revanche =====
+function allerRevanche(r) {
+  const nouveauSlot = r.par === uid ? 1 : 2;
+  window.location.href =
+    "duel.html?m=" + encodeURIComponent(r.code) +
+    "&r=" + encodeURIComponent(roundIdDuCode(r.code)) +
+    "&slot=" + nouveauSlot;
+}
+
+async function revanche() {
+  if (revancheEnCours) return;
+  revancheEnCours = true;
+  try {
+    if (data.revanche && data.revanche.code) {
+      allerRevanche(data.revanche);
+      return;
+    }
+    const code = nouveauCodeRevanche(matchId);
+    try {
+      await set(ref(db, "duels/" + matchId + "/revanche"), { code: code, par: uid });
+    } catch (e) {
+      // l'adversaire a proposé au même moment : on prend sa proposition
+    }
+    const snap = await get(ref(db, "duels/" + matchId + "/revanche"));
+    if (snap.exists()) {
+      allerRevanche(snap.val());
+      return;
+    }
+    revancheEnCours = false;
+    erreur("Revanche impossible pour le moment.");
+  } catch (e) {
+    revancheEnCours = false;
+    erreur(e);
+  }
+}
+
+function majRevanche() {
+  const b = $("btn-revanche");
+  const r = data.revanche;
+  if (r && r.code) {
+    if (r.par === uid) {
+      b.textContent = "▶️ Lancer la revanche";
+      $("fin-revanche").textContent = "Revanche proposée : ton ami peut te rejoindre.";
+    } else {
+      b.textContent = "⚔️ Accepter la revanche";
+      $("fin-revanche").textContent = nomAdvTexte + " te propose une revanche !";
+      if (!revancheSonJouee) {
+        revancheSonJouee = true;
+        Sons.depart();
+      }
+    }
+  } else {
+    b.textContent = "⚔️ Revanche";
+    $("fin-revanche").textContent = "";
+  }
+}
+
 function finDuel(calc) {
   $("statut").hidden = true;
   $("zone-question").hidden = true;
@@ -386,11 +566,14 @@ function finDuel(calc) {
   }
 
   regler(vMoi, vAdv);
+  enregistrerResultat(vMoi, vAdv);
 
   let detail = "Score : " + vMoi + " – " + vAdv;
   if (mise > 0) detail += "\n" + (resumeMise || "Calcul de la mise…");
   else detail += "\nMatch amical sans mise";
   $("fin-detail").textContent = detail;
+  $("fin-face").textContent = faceTexte;
+  majRevanche();
 }
 
 function afficher() {
@@ -427,6 +610,7 @@ function afficher() {
 
   if (!departJoue) {
     departJoue = true;
+    ajouterVu(round.id);
     Sons.depart();
   }
 
@@ -490,4 +674,5 @@ async function demarrer() {
   }
 }
 
+$("btn-revanche").addEventListener("click", revanche);
 demarrer();
