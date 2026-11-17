@@ -130,6 +130,7 @@ import { ROUNDS } from "./rounds.js";
 // Code = "0" + mise (0, 1 ou 2) + numéro du sujet (2 caractères) + 2 lettres au hasard
 const LETTRES = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MISES = [0, 5, 10];
+const CLE_VUS = "ligue_vus";
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -140,6 +141,28 @@ let solde = null;
 
 function dire(texte) {
   $("msg").textContent = texte;
+}
+
+function lireVus() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CLE_VUS) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// Un sujet que tu n'as pas encore joué (ou n'importe lequel si tu les as tous vus)
+function sujetAuHasard() {
+  const vus = lireVus();
+  const tous = ROUNDS.map(function (r, i) {
+    return i;
+  });
+  let candidats = tous.filter(function (i) {
+    return vus.indexOf(ROUNDS[i].id) === -1;
+  });
+  if (candidats.length === 0) candidats = tous;
+  return candidats[Math.floor(Math.random() * candidats.length)];
 }
 
 function nouveauCode(indexRound, indexMise) {
@@ -223,12 +246,18 @@ async function chargerSolde() {
   }
 }
 
+// Le premier choix est « Au hasard », les autres sont tous les sujets
+const hasard = document.createElement("option");
+hasard.value = "-1";
+hasard.textContent = "🎲 Au hasard (sujet pas encore vu)";
+$("round").appendChild(hasard);
 ROUNDS.forEach(function (r, i) {
   const o = document.createElement("option");
   o.value = i;
   o.textContent = r.titre;
   $("round").appendChild(o);
 });
+$("round").value = "-1";
 
 $("btn-creer").addEventListener("click", function () {
   const indexMise = parseInt($("mise").value, 10);
@@ -237,10 +266,15 @@ $("btn-creer").addEventListener("click", function () {
     dire("Solde insuffisant : il te faut " + m + " pièces (tu en as " + solde + ").");
     return;
   }
-  codeCourant = nouveauCode(parseInt($("round").value, 10), indexMise);
+  let indexRound = parseInt($("round").value, 10);
+  if (indexRound < 0) indexRound = sujetAuHasard();
+  codeCourant = nouveauCode(indexRound, indexMise);
   $("code").textContent = codeCourant;
   $("zone-code").hidden = false;
-  dire("Défi créé (mise : " + texteMise(m) + "). Donne le code à ton ami, puis touche Commencer.");
+  dire(
+    "Défi créé · sujet : " + ROUNDS[indexRound].titre + " · mise : " + texteMise(m) +
+    ". Donne le code à ton ami, puis touche Commencer."
+  );
 });
 
 $("btn-wa").addEventListener("click", function () {
@@ -306,4 +340,4 @@ if (recu) {
 chargerSolde();
 </script>
 </body>
-  </html>
+</html>
