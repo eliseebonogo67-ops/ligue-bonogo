@@ -74,8 +74,8 @@ const $ = function (id) {
 let uid = null;
 let v = {};
 
-// Le bouton Administration n'est visible que sur le téléphone de l'administrateur :
-// ouvre accueil.html?admin=1 une fois pour l'afficher, ?admin=0 pour le cacher.
+// Administration : ouvre accueil.html?admin=1 pour l'afficher (?admin=0 pour la cacher),
+// ou appuie 5 fois vite sur la ligne d'XP (marche aussi dans l'application).
 try {
   const params = new URLSearchParams(window.location.search);
   if (params.get("admin") === "1") localStorage.setItem("ligue_admin", "1");
@@ -84,6 +84,29 @@ try {
 } catch (e) {
   // sans importance
 }
+
+let touches = 0;
+let derniereTouche = 0;
+$("xp-texte").addEventListener("click", function () {
+  const maintenantMs = Date.now();
+  touches = maintenantMs - derniereTouche < 1500 ? touches + 1 : 1;
+  derniereTouche = maintenantMs;
+  if (touches < 5) return;
+  touches = 0;
+  try {
+    if (localStorage.getItem("ligue_admin") === "1") {
+      localStorage.removeItem("ligue_admin");
+      $("lien-admin").hidden = true;
+      $("msg-test").textContent = "Mode administrateur désactivé.";
+    } else {
+      localStorage.setItem("ligue_admin", "1");
+      $("lien-admin").hidden = false;
+      $("msg-test").textContent = "Mode administrateur activé.";
+    }
+  } catch (e) {
+    $("msg-test").textContent = "Impossible d’enregistrer le mode administrateur sur cet appareil.";
+  }
+});
 
 function afficherProgression() {
   $("solde").textContent = v.pieces || 0;
