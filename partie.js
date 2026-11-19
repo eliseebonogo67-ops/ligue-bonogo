@@ -653,4 +653,149 @@ function afficher() {
     return;
   }
 
-  //
+  // 1. Inscriptions
+  if (!salon.lanceLe) {
+    $("retour").hidden = false;
+    $("titre-manche").textContent = "Salle " + salon.mise + " 🪙 · " + round.titre;
+    viderClassement();
+    const n = tous.length;
+
+    if (!entreeSonJoue) {
+      entreeSonJoue = true;
+      Sons.perte();
+    }
+
+    if (now < salon.ferme) {
+      const reste = Math.ceil((salon.ferme - now) / 1000);
+      if (reste <= 3 && dernierTic !== "w" + reste) {
+        dernierTic = "w" + reste;
+        Sons.tic();
+      }
+      $("btn-quitter").hidden = false;
+      $("liste-attente").hidden = false;
+      $("liste-attente").textContent =
+        n > 6 ? n + " joueurs inscrits" : tous.map(nomJoueur).join("  ·  ");
+      let mode = "";
+      if (n >= SEUIL_ELIMINATION) mode = "\n⚔️ Mode élimination (une question par tour)";
+      etat(
+        (n >= salon.max ? "Salle complète" : "Inscriptions ouvertes") +
+          " · " + n + " / " + salon.max + mode + "\nDépart dans " + reste + " s"
+      );
+    } else if (n >= 2) {
+      $("btn-quitter").hidden = true;
+      $("liste-attente").hidden = true;
+      etat("Départ…");
+      lancerSiPret();
+    } else {
+      $("btn-quitter").hidden = true;
+      etat("Il faut au moins 2 joueurs.\nNouvelle attente de 45 s…");
+      prolongerSiBesoin();
+    }
+    return;
+  }
+
+  // 2. Partie lancée
+  $("btn-quitter").hidden = true;
+  $("liste-attente").hidden = true;
+
+  // 5 joueurs ou plus : mode élimination
+  if (tous.length >= SEUIL_ELIMINATION) {
+    afficherElimination(tous, now);
+    return;
+  }
+
+  const t = calculerTournoi(tous, salon.lanceLe - DECALAGE_DEPART_MS, salon.round, ROUNDS, partie, now);
+  const m = t.manches[t.manches.length - 1];
+
+  if (t.termine) {
+    $("retour").hidden = false;
+    finTournoi(t, m, tous);
+    return;
+  }
+  $("retour").hidden = true;
+
+  if (now < m.debut) {
+    avantManche(t, m, tous, now);
+    return;
+  }
+
+  if (!departsJoues[m.n]) {
+    departsJoues[m.n] = true;
+    Sons.depart();
+  }
+
+  const plan = m.plan;
+  const nq = plan.questions.length;
+  let i = 0;
+  while (i < nq - 1 && now >= plan.questions[i + 1].debut) i++;
+  const p = plan.questions[i];
+  const q = m.round.questions[i];
+
+  $("titre-manche").textContent = "Manche " + m.n + " · " + m.round.titre;
+  afficherClassement(m.scores, m.joueurs, tous, m.marques);
+
+  if (m.joueurs.indexOf(uid) === -1) {
+    etat("Tu es éliminé. Tu suis la suite…");
+    return;
+  }
+
+  if (now < p.fin) phaseQuestion(m, i, q, p, now);
+  else if (now < p.revele) phaseCalcul(m, i, q);
+  else phaseResultat(m, i, q, now);
+}
+
+async function quitter() {
+  if (!salon || salon.lanceLe) return;
+  const mise = miseDe(uid);
+  try {
+    const snap = await get(ref(db, "joueurs/" + uid + "/pieces"));
+    const solde = snap.exists() ? snap.val() : 0;
+    const maj = {};
+    maj["salons/" + salonId + "/joueurs/" + uid] = null;
+    maj["salons/" + salonId + "/mises/" + uid] = null;
+    maj["joueurs/" + uid + "/pieces"] = solde + mise;
+    await update(ref(db), maj);
+    await runTransaction(ref(db, "salons/" + salonId + "/nb"), function (n) {
+      return Math.max(0, (n || 1) - 1);
+    });
+    window.location.href = "salon.html";
+  } catch (e) {
+    erreur(e);
+  }
+}
+
+$("btn-quitter").addEventListener("click", quitter);
+$("statut").style.whiteSpace = "pre-line";
+
+// Le haut de l'écran (notes des joueurs) reste visible quand on fait défiler
+const zoneClassement = $("classement");
+zoneClassement.style.position = "sticky";
+zoneClassement.style.top = "0";
+zoneClassement.style.zIndex = "5";
+zoneClassement.style.padding = "8px 0";
+zoneClassement.style.background = "rgba(8, 14, 70, 0.94)";
+
+async function demarrer() {
+  if (!salonId) {
+    erreur("Ouvre salon.html pour choisir une salle.");
+    return;
+  }
+  try {
+    const cred = await signInAnonymously(auth);
+    uid = cred.user.uid;
+
+    await initHorloge();
+
+    onValue(ref(db, "salons/" + salonId), function (s) {
+      salon = s.val();
+    });
+    onValue(ref(db, "parties/" + salonId), function (s) {
+      partie = s.val() || {};
+    });
+    setInterval(afficher, 250);
+  } catch (e) {
+    erreur(e);
+  }
+}
+
+demarrer();
