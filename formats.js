@@ -1,7 +1,7 @@
 export const FORMATS = [
-  { id: "a", mise: 5, max: 4 },
-  { id: "b", mise: 10, max: 6 },
-  { id: "c", mise: 16, max: 10 }
+  { id: "a", mise: 5, max: 100 },
+  { id: "b", mise: 10, max: 50 },
+  { id: "c", mise: 16, max: 25 }
 ];
 
 export const FENETRE_MS = 45000;
