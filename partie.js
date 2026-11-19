@@ -9,7 +9,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
 import { ROUNDS } from "./rounds.js";
-import { calculerTournoi } from "./partiemoteur.js";
+import { calculerTournoi, calculerElimination, SEUIL_ELIMINATION } from "./partiemoteur.js";
 import { ouvrirCycle, prolonger } from "./cycles.js";
 import { initHorloge, maintenant } from "./horloge.js";
 import { Sons } from "./sons.js";
@@ -60,7 +60,7 @@ function listeJoueurs() {
   });
 }
 
-// Charge une seule fois l'animal et le pseudo de chaque joueur
+// Charge une seule fois l'animal et le pseudo des joueurs demandés
 function chargerProfils(ids) {
   ids.forEach(function (id) {
     if (profilsDemandes[id]) return;
@@ -182,7 +182,9 @@ function afficherClassement(scores, enJeu, tous, marques) {
   const autres = ordre.filter(function (id) {
     return id !== uid;
   });
-  autres.slice(0, classementOuvert ? autres.length : 3).forEach(function (id) {
+  const visibles = autres.slice(0, classementOuvert ? autres.length : 3);
+  chargerProfils([uid].concat(visibles));
+  visibles.forEach(function (id) {
     zone.appendChild(puce(id, enJeu, scores, marques, false));
   });
 
@@ -342,6 +344,7 @@ async function terminerCycle(fin) {
 }
 
 function finTournoi(t, m, tous) {
+  chargerProfils(t.gagnants);
   afficherClassement(m.scores, m.joueurs, tous, m.marques);
   $("titre-manche").textContent = "Partie terminée";
   $("statut").hidden = true;
@@ -385,6 +388,229 @@ function finTournoi(t, m, tous) {
   terminerCycle(m.plan.fin);
 }
 
+// ===== Mode élimination (5 joueurs ou plus) =====
+
+function maReponseE(k) {
+  const cle = "e" + k;
+  if (envoyees[cle] !== undefined) return envoyees[cle];
+  const r = partie.tours && partie.tours["t" + k] && partie.tours["t" + k][uid];
+  return r ? r.c : null;
+}
+
+async function envoyerE(k, i, q) {
+  const cle = "e" + k;
+  if (envoyees[cle] !== undefined || maReponseE(k) !== null) return;
+  envoyees[cle] = i;
+  Sons.clic();
+  majBoutons(q, i, false, false);
+  try {
+    await set(ref(db, "parties/" + salonId + "/tours/t" + k + "/" + uid), {
+      c: i,
+      t: maintenant()
+    });
+  } catch (e) {
+    erreur(e);
+  }
+}
+
+function montrerQuestionE(d) {
+  $("statut").hidden = true;
+  $("zone-fin").hidden = true;
+  $("zone-question").hidden = false;
+  const cle = "e" + d.k;
+  if (rendu !== cle) {
+    rendu = cle;
+    const q = d.item.q;
+    $("numero").textContent = "Question " + (d.k + 1);
+    $("question").textContent = q.q;
+    const zone = $("choix");
+    zone.innerHTML = "";
+    q.choix.forEach(function (texte, i) {
+      const b = document.createElement("button");
+      b.textContent = texte;
+      b.addEventListener("click", function () {
+        envoyerE(d.k, i, q);
+      });
+      zone.appendChild(b);
+    });
+  }
+}
+
+function chipSimple(texte, classe) {
+  const c = document.createElement("div");
+  c.className = "joueur" + (classe ? " " + classe : "");
+  const s = document.createElement("span");
+  s.textContent = texte;
+  c.appendChild(s);
+  return c;
+}
+
+// Haut de l'écran en mode élimination : combien restent en jeu, et ma situation
+function afficherEtatElimination(enJeu, total, moiEnJeu) {
+  const signature = "e|" + enJeu + "|" + total + "|" + moiEnJeu;
+  if (signature === signatureClassement) return;
+  signatureClassement = signature;
+  const zone = $("classement");
+  zone.innerHTML = "";
+  zone.style.maxHeight = "";
+  zone.style.overflowY = "";
+  zone.appendChild(chipSimple("👥 En jeu : " + enJeu + " / " + total, ""));
+  zone.appendChild(chipSimple(moiEnJeu ? "🟢 Tu es en jeu" : "✗ Tu es éliminé", moiEnJeu ? "moi" : "elimine"));
+}
+
+function afficherGagnants(g) {
+  const signature = "g|" + g.join(",") + "|" + versionProfils;
+  if (signature === signatureClassement) return;
+  signatureClassement = signature;
+  const zone = $("classement");
+  zone.innerHTML = "";
+  zone.style.maxHeight = "";
+  zone.style.overflowY = "";
+  g.slice(0, 6).forEach(function (id) {
+    zone.appendChild(chipSimple("🏆 " + nomJoueur(id), id === uid ? "moi" : ""));
+  });
+  if (g.length > 6) zone.appendChild(chipSimple("… et " + (g.length - 6) + " autres", ""));
+}
+
+function phaseQuestionE(d, p, now) {
+  montrerQuestionE(d);
+  const q = d.item.q;
+  const reste = Math.ceil((p.fin - now) / 1000);
+  $("chrono").textContent = "⏱ " + reste + " s";
+  const cleTic = "e" + d.k + "-" + reste;
+  if (reste <= 5 && reste > 0 && dernierTic !== cleTic) {
+    dernierTic = cleTic;
+    Sons.tic();
+  }
+  const c = maReponseE(d.k);
+  majBoutons(q, c, false, false);
+  $("info").textContent = c !== null ? "Réponse envoyée ✓\nSi tu te trompes, tu es éliminé" : "Trouve la bonne réponse pour continuer";
+}
+
+function phaseCalculE(d) {
+  montrerQuestionE(d);
+  $("chrono").textContent = "⏱ 0 s";
+  majBoutons(d.item.q, maReponseE(d.k), true, false);
+  $("info").textContent = "Calcul du résultat…";
+}
+
+function phaseResultatE(d, now, restants) {
+  montrerQuestionE(d);
+  const q = d.item.q;
+  const c = maReponseE(d.k);
+  const bon = d.bons.indexOf(uid) !== -1;
+  const elimine = d.elimines.indexOf(uid) !== -1;
+
+  const cleSon = "e" + d.k;
+  if (!sonsJoues[cleSon]) {
+    sonsJoues[cleSon] = true;
+    if (bon) Sons.bon();
+    else Sons.faux();
+  }
+
+  majBoutons(q, c, true, true);
+  $("chrono").textContent = "Suite dans " + Math.max(0, Math.ceil((d.plan.suivant - now) / 1000)) + " s";
+
+  let texte;
+  if (elimine) texte = "❌ Éliminé";
+  else if (d.bons.length === 0) texte = "⚪ Personne n’a trouvé : aucun éliminé";
+  else if (d.elimines.length === 0) texte = "✅ Bonne réponse : personne n’est éliminé";
+  else texte = "✅ Tu continues";
+  texte += "\nÉliminés : " + d.elimines.length + " · En jeu : " + restants;
+  $("info").textContent = texte;
+}
+
+function finElimination(t, d, tous) {
+  const g = t.gagnants;
+  chargerProfils(g);
+  afficherGagnants(g);
+  $("titre-manche").textContent = "Partie terminée";
+  $("statut").hidden = true;
+  $("zone-question").hidden = true;
+  $("zone-fin").hidden = false;
+
+  const jeGagne = g.indexOf(uid) !== -1;
+  const gain = Math.floor(pot() / g.length);
+
+  if (!finSonJoue) {
+    finSonJoue = true;
+    if (jeGagne) {
+      Sons.victoire();
+    } else {
+      Sons.defaite();
+      setTimeout(Sons.perte, 900);
+    }
+  }
+
+  let titre;
+  if (!t.partage) {
+    titre = jeGagne ? "🏆 Dernier en jeu : tu remportes la cagnotte !" : "Défaite : " + nomJoueur(g[0]) + " gagne";
+  } else {
+    titre = jeGagne
+      ? "🤝 Plusieurs survivants : cagnotte partagée"
+      : "Cagnotte partagée entre " + g.length + " survivants";
+  }
+  $("fin-titre").textContent = titre;
+
+  let detail = "Cagnotte : " + pot() + " 🪙 · " + tous.length + " joueurs";
+  if (jeGagne) {
+    detail += "\nTu reçois " + gain + " 🪙";
+    reclamer(gain);
+    if (bilan) detail += "\n" + bilan;
+  } else {
+    detail += "\nTu perds ton droit d’entrée de " + miseDe(uid) + " 🪙";
+  }
+  $("fin-detail").textContent = detail;
+
+  terminerCycle(d.plan.suivant);
+}
+
+function afficherElimination(tous, now) {
+  const t = calculerElimination(tous, salon.lanceLe - DECALAGE_DEPART_MS, salon.round, ROUNDS, partie.tours || {}, now);
+  const d = t.tours[t.tours.length - 1];
+
+  if (t.termine) {
+    $("retour").hidden = false;
+    finElimination(t, d, tous);
+    return;
+  }
+  $("retour").hidden = true;
+
+  if (now < d.plan.debut) {
+    const reste = Math.ceil((d.plan.debut - now) / 1000);
+    if (reste <= 3 && reste > 0 && dernierTic !== "e0-" + reste) {
+      dernierTic = "e0-" + reste;
+      Sons.tic();
+    }
+    $("titre-manche").textContent = "⚔️ Élimination · " + tous.length + " joueurs";
+    viderClassement();
+    etat("Une question à la fois : ceux qui se trompent sont éliminés.\nDébut dans " + reste + " s");
+    return;
+  }
+
+  if (!departsJoues["e" + d.k]) {
+    departsJoues["e" + d.k] = true;
+    Sons.depart();
+  }
+
+  const restants = d.decide ? d.vivants.length - d.elimines.length : d.vivants.length;
+  const moiVivant = d.vivants.indexOf(uid) !== -1;
+  const moiApres = moiVivant && d.elimines.indexOf(uid) === -1;
+
+  $("titre-manche").textContent = "Question " + (d.k + 1) + " · " + d.item.titre;
+  afficherEtatElimination(restants, tous.length, d.decide ? moiApres : moiVivant);
+
+  if (!moiVivant) {
+    etat("Tu es éliminé ❌\n" + restants + " joueur" + (restants > 1 ? "s" : "") + " encore en jeu");
+    return;
+  }
+
+  const p = d.plan;
+  if (now < p.fin) phaseQuestionE(d, p, now);
+  else if (now < p.revele) phaseCalculE(d);
+  else phaseResultatE(d, now, restants);
+}
+
 function lancerSiPret() {
   if (lanceTente) return;
   lanceTente = true;
@@ -417,7 +643,7 @@ function afficher() {
   const tous = listeJoueurs();
   const round = ROUNDS[salon.round] || ROUNDS[0];
   $("cagnotte").textContent = pot();
-  chargerProfils(tous);
+  chargerProfils(tous.length <= 8 ? tous : [uid]);
 
   if (tous.indexOf(uid) === -1) {
     $("retour").hidden = false;
@@ -427,141 +653,4 @@ function afficher() {
     return;
   }
 
-  // 1. Inscriptions
-  if (!salon.lanceLe) {
-    $("retour").hidden = false;
-    $("titre-manche").textContent = "Salle " + salon.mise + " 🪙 · " + round.titre;
-    viderClassement();
-    const n = tous.length;
-
-    if (!entreeSonJoue) {
-      entreeSonJoue = true;
-      Sons.perte();
-    }
-
-    if (now < salon.ferme) {
-      const reste = Math.ceil((salon.ferme - now) / 1000);
-      if (reste <= 3 && dernierTic !== "w" + reste) {
-        dernierTic = "w" + reste;
-        Sons.tic();
-      }
-      $("btn-quitter").hidden = false;
-      $("liste-attente").hidden = false;
-      $("liste-attente").textContent =
-        n > 6 ? n + " joueurs inscrits" : tous.map(nomJoueur).join("  ·  ");
-      etat(
-        (n >= salon.max ? "Salle complète" : "Inscriptions ouvertes") +
-          " · " + n + " / " + salon.max + "\nDépart dans " + reste + " s"
-      );
-    } else if (n >= 2) {
-      $("btn-quitter").hidden = true;
-      $("liste-attente").hidden = true;
-      etat("Départ…");
-      lancerSiPret();
-    } else {
-      $("btn-quitter").hidden = true;
-      etat("Il faut au moins 2 joueurs.\nNouvelle attente de 45 s…");
-      prolongerSiBesoin();
-    }
-    return;
-  }
-
-  // 2. Partie lancée
-  $("btn-quitter").hidden = true;
-  $("liste-attente").hidden = true;
-
-  const t = calculerTournoi(tous, salon.lanceLe - DECALAGE_DEPART_MS, salon.round, ROUNDS, partie, now);
-  const m = t.manches[t.manches.length - 1];
-
-  if (t.termine) {
-    $("retour").hidden = false;
-    finTournoi(t, m, tous);
-    return;
-  }
-  $("retour").hidden = true;
-
-  if (now < m.debut) {
-    avantManche(t, m, tous, now);
-    return;
-  }
-
-  if (!departsJoues[m.n]) {
-    departsJoues[m.n] = true;
-    Sons.depart();
-  }
-
-  const plan = m.plan;
-  const nq = plan.questions.length;
-  let i = 0;
-  while (i < nq - 1 && now >= plan.questions[i + 1].debut) i++;
-  const p = plan.questions[i];
-  const q = m.round.questions[i];
-
-  $("titre-manche").textContent = "Manche " + m.n + " · " + m.round.titre;
-  afficherClassement(m.scores, m.joueurs, tous, m.marques);
-
-  if (m.joueurs.indexOf(uid) === -1) {
-    etat("Tu es éliminé. Tu suis la suite…");
-    return;
-  }
-
-  if (now < p.fin) phaseQuestion(m, i, q, p, now);
-  else if (now < p.revele) phaseCalcul(m, i, q);
-  else phaseResultat(m, i, q, now);
-}
-
-async function quitter() {
-  if (!salon || salon.lanceLe) return;
-  const mise = miseDe(uid);
-  try {
-    const snap = await get(ref(db, "joueurs/" + uid + "/pieces"));
-    const solde = snap.exists() ? snap.val() : 0;
-    const maj = {};
-    maj["salons/" + salonId + "/joueurs/" + uid] = null;
-    maj["salons/" + salonId + "/mises/" + uid] = null;
-    maj["joueurs/" + uid + "/pieces"] = solde + mise;
-    await update(ref(db), maj);
-    await runTransaction(ref(db, "salons/" + salonId + "/nb"), function (n) {
-      return Math.max(0, (n || 1) - 1);
-    });
-    window.location.href = "salon.html";
-  } catch (e) {
-    erreur(e);
-  }
-}
-
-$("btn-quitter").addEventListener("click", quitter);
-$("statut").style.whiteSpace = "pre-line";
-
-// Le haut de l'écran (notes des joueurs) reste visible quand on fait défiler
-const zoneClassement = $("classement");
-zoneClassement.style.position = "sticky";
-zoneClassement.style.top = "0";
-zoneClassement.style.zIndex = "5";
-zoneClassement.style.padding = "8px 0";
-zoneClassement.style.background = "rgba(8, 14, 70, 0.94)";
-
-async function demarrer() {
-  if (!salonId) {
-    erreur("Ouvre salon.html pour choisir une salle.");
-    return;
-  }
-  try {
-    const cred = await signInAnonymously(auth);
-    uid = cred.user.uid;
-
-    await initHorloge();
-
-    onValue(ref(db, "salons/" + salonId), function (s) {
-      salon = s.val();
-    });
-    onValue(ref(db, "parties/" + salonId), function (s) {
-      partie = s.val() || {};
-    });
-    setInterval(afficher, 250);
-  } catch (e) {
-    erreur(e);
-  }
-}
-
-demarrer();
+  //
