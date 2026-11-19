@@ -16,6 +16,7 @@ import { initHorloge, maintenant } from "./horloge.js";
 const MAX_PARTIES_JOUR = 10;
 const MAX_JEU_MS = 910000;
 const DELAI_REPARATION_MS = 8000;
+const MSG_COMPLETE = "Salle complète : attends la prochaine partie.";
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -118,8 +119,15 @@ function majCartes() {
       b.onclick = function () {
         rejoindre(f.id);
       };
+    } else if (ouverte) {
+      // Salle pleine : le bouton reste actif pour afficher le message
+      b.textContent = "Complète";
+      b.disabled = false;
+      b.onclick = function () {
+        dire(MSG_COMPLETE);
+      };
     } else {
-      b.textContent = ouverte ? "Complète" : "Patiente…";
+      b.textContent = "Patiente…";
       b.disabled = true;
     }
   });
@@ -133,6 +141,10 @@ async function rejoindre(fid) {
   const now = maintenant();
   if (s.lanceLe || now >= s.ferme) {
     dire("Les inscriptions sont fermées pour cette salle.");
+    return;
+  }
+  if (nbJoueurs(s) >= s.max) {
+    dire(MSG_COMPLETE);
     return;
   }
   if (solde < s.mise) {
@@ -156,7 +168,7 @@ async function rejoindre(fid) {
       return n + 1;
     });
     if (!res.committed) {
-      dire("Cette salle est déjà complète.");
+      dire(MSG_COMPLETE);
       return;
     }
 
