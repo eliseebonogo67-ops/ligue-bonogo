@@ -1,4 +1,4 @@
-// XP, grades, série de jours, défi du jour et semaines du palmarès
+// XP, grades, série de jours, défi du jour, titres à mériter et semaines du palmarès
 
 export const GRADES = [
   { nom: "Recrue", xp: 0, emoji: "🛡️" },
@@ -54,7 +54,7 @@ export function jourPrecedent(date, n) {
   return d.toISOString().slice(0, 10);
 }
 
-// Un jour est actif si le joueur a fait un round d'entraînement ou joué une compétition
+// Un jour est actif si le joueur s'est entraîné ou a joué une compétition
 function actif(v, jour) {
   return !!((v.stats && v.stats[jour]) || (v.jeux && v.jeux[jour]) || (v.jours && v.jours[jour]));
 }
@@ -83,7 +83,7 @@ export function calculerSerie(v, date) {
 // Défis du jour (le même pour tous les joueurs, il change chaque jour)
 export const DEFIS = [
   { id: "bonnes10", texte: "Réponds juste à 10 questions en entraînement", cible: 10, recompense: 15, source: "bonnes" },
-  { id: "rounds2", texte: "Termine 2 rounds d’entraînement", cible: 2, recompense: 15, source: "rounds" },
+  { id: "rep15", texte: "Réponds à 15 questions en entraînement", cible: 15, recompense: 15, source: "repondues" },
   { id: "serie4", texte: "Enchaîne 4 bonnes réponses d’affilée", cible: 4, recompense: 20, source: "serie" },
   { id: "comp1", texte: "Joue une partie en compétition", cible: 1, recompense: 20, source: "jeux" },
   { id: "bonnes20", texte: "Réponds juste à 20 questions en entraînement", cible: 20, recompense: 25, source: "bonnes" }
@@ -99,10 +99,120 @@ export function progresDefi(defi, v, date) {
   const s = (v.stats && v.stats[date]) || {};
   let p = 0;
   if (defi.source === "bonnes") p = s.bonnes || 0;
-  else if (defi.source === "rounds") p = s.rounds || 0;
+  else if (defi.source === "repondues") p = s.repondues || 0;
   else if (defi.source === "serie") p = s.serie || 0;
   else if (defi.source === "jeux") p = (v.jeux && v.jeux[date]) || 0;
   return Math.min(p, defi.cible);
+}
+
+// ===== Titres : on les mérite, on ne les achète pas =====
+function somme(objet, champ) {
+  let t = 0;
+  Object.keys(objet || {}).forEach(function (k) {
+    const x = objet[k];
+    t += Number(champ ? x && x[champ] : x) || 0;
+  });
+  return t;
+}
+
+function maximum(objet, champ) {
+  let m = 0;
+  Object.keys(objet || {}).forEach(function (k) {
+    const x = objet[k];
+    m = Math.max(m, Number(x && x[champ]) || 0);
+  });
+  return m;
+}
+
+export const TITRES = [
+  { id: "titre_recrue", nom: "Recrue", texte: "Recrue", desc: "Titre de départ", cible: 0 },
+  {
+    id: "titre_assidu",
+    nom: "Assidu",
+    texte: "Assidu 📅",
+    desc: "Joue 7 jours d’affilée",
+    cible: 7,
+    mesure: function (v) {
+      return calculerSerie(v, aujourdhui()).serie;
+    }
+  },
+  {
+    id: "titre_sniper",
+    nom: "Sniper",
+    texte: "Sniper 🎯",
+    desc: "Enchaîne 10 bonnes réponses d’affilée",
+    cible: 10,
+    mesure: function (v) {
+      return maximum(v.stats, "serie");
+    }
+  },
+  {
+    id: "titre_machine",
+    nom: "Machine",
+    texte: "Machine ⚡",
+    desc: "Donne 300 bonnes réponses en entraînement",
+    cible: 300,
+    mesure: function (v) {
+      return somme(v.stats, "bonnes");
+    }
+  },
+  {
+    id: "titre_strategue",
+    nom: "Stratège",
+    texte: "Stratège 🧠",
+    desc: "Joue 10 compétitions",
+    cible: 10,
+    mesure: function (v) {
+      return somme(v.jeux, null);
+    }
+  },
+  {
+    id: "titre_duelliste",
+    nom: "Duelliste",
+    texte: "Duelliste ⚔️",
+    desc: "Gagne 5 duels contre des amis",
+    cible: 5,
+    mesure: function (v, duels) {
+      return (duels && duels.v) || 0;
+    }
+  },
+  {
+    id: "titre_champion",
+    nom: "Champion",
+    texte: "Champion 🏆",
+    desc: "Gagne 3 compétitions",
+    cible: 3,
+    mesure: function (v) {
+      return v.victoires || 0;
+    }
+  },
+  {
+    id: "titre_legende",
+    nom: "Légende",
+    texte: "Légende 👑",
+    desc: "Atteins le grade de Colonel (4 500 XP)",
+    cible: 4500,
+    mesure: function (v) {
+      return totalXp(v);
+    }
+  }
+];
+
+// Pour chaque titre : la valeur actuelle du joueur et s'il est mérité
+export function evaluerTitres(v, duels) {
+  v = v || {};
+  return TITRES.map(function (t) {
+    const valeur = t.mesure ? t.mesure(v, duels || {}) : 0;
+    return {
+      id: t.id,
+      nom: t.nom,
+      texte: t.texte,
+      desc: t.desc,
+      cible: t.cible,
+      valeur: Math.min(valeur, t.cible),
+      merite: !t.mesure || valeur >= t.cible
+    };
+  });
 }
 
 // Identifiant de la semaine (du lundi au dimanche), par exemple 2026-W46
@@ -127,4 +237,4 @@ export function resteSemaine() {
   const fin = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + (8 - jour));
   const ms = Math.max(0, fin - Date.now());
   return { jours: Math.floor(ms / 86400000), heures: Math.floor((ms % 86400000) / 3600000) };
-}
+   }
