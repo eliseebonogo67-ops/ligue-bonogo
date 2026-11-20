@@ -6,7 +6,209 @@
 <meta name="theme-color" content="#0b1250">
 <title>Ligue Bonogo - Entraînement</title>
 <link rel="stylesheet" href="theme.css">
-<link rel="stylesheet" href="style.css">
+<style>
+  .retour {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900;
+  }
+  .espace {
+    width: 62px;
+  }
+  .jour {
+    margin: 12px 0 0;
+    text-align: center;
+    color: var(--texte-doux);
+    font-size: 13px;
+  }
+  .err {
+    min-height: 16px;
+    margin: 6px 0 0;
+    text-align: center;
+    color: #ff8a80;
+    font-size: 13px;
+  }
+  .titre {
+    margin: 18px 0 12px;
+    text-align: center;
+    font-size: 22px;
+    color: #ffd54a;
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  }
+  .info {
+    margin: 6px 0;
+    color: var(--texte-doux);
+    font-size: 13px;
+  }
+  .centre {
+    text-align: center;
+  }
+  .bandeau {
+    margin: 10px 0;
+    padding: 10px;
+    border-radius: 14px;
+    background: linear-gradient(#ffd54a, #ffa800);
+    color: #5a3a00;
+    text-align: center;
+    font-weight: 900;
+  }
+  .carte-choix {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    margin: 0 0 14px;
+    padding: 14px;
+    border-radius: 18px;
+    border: 3px solid var(--or);
+    background: linear-gradient(#2a3db5, #17238a);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.2), 0 5px 0 #0a1060;
+    color: #fff;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .carte-choix:active:not(:disabled) {
+    transform: translateY(3px);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.2), 0 2px 0 #0a1060;
+  }
+  .carte-choix:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .gros-emoji {
+    flex: none;
+    font-size: 36px;
+  }
+  .carte-texte b {
+    display: block;
+    font-size: 19px;
+  }
+  .carte-texte span {
+    font-size: 13px;
+    color: #cfd6ff;
+  }
+  .entete-quiz {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 8px 12px;
+    border-radius: 14px;
+    border: 2px solid var(--bord);
+    background: rgba(0, 0, 25, 0.5);
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .score-seance {
+    color: #ffd54a;
+  }
+  .ligne-q {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 20px;
+    margin-top: 12px;
+  }
+  .serie {
+    color: #ffb300;
+    font-weight: 800;
+  }
+  #question {
+    margin: 8px 0 14px;
+    font-size: 20px;
+    line-height: 1.35;
+  }
+  #choix button {
+    display: block;
+    width: 100%;
+    margin: 10px 0;
+    padding: 14px;
+    border-radius: 14px;
+    border: 2px solid #4a58c0;
+    background: linear-gradient(#2a3db5, #17238a);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.2), 0 4px 0 #0a1060;
+    color: #fff;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 800;
+    text-align: left;
+    cursor: pointer;
+  }
+  #choix button:active:not(:disabled) {
+    transform: translateY(3px);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.2), 0 1px 0 #0a1060;
+  }
+  #choix button:disabled {
+    color: #fff;
+    cursor: default;
+  }
+  #choix button:disabled:not(.juste):not(.faux) {
+    opacity: 0.7;
+  }
+  #choix button.juste {
+    border-color: #b6f58f;
+    background: linear-gradient(#7be046, #2c9e12);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), 0 4px 0 #1b6a0a;
+  }
+  #choix button.faux {
+    border-color: #ffb3ad;
+    background: linear-gradient(#ff6b60, #c8160c);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.3), 0 4px 0 #7a0b05;
+  }
+  .retour-rep {
+    min-height: 22px;
+    margin: 12px 0 4px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 800;
+  }
+  .expl {
+    margin: 10px 0;
+    padding: 12px;
+    border-radius: 14px;
+    border: 2px solid rgba(255, 213, 74, 0.5);
+    background: rgba(255, 213, 74, 0.12);
+    color: #ffe9a0;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .lien {
+    display: block;
+    margin: 14px auto 0;
+    padding: 8px 12px;
+    border: 0;
+    background: none;
+    color: var(--texte-doux);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .grand {
+    margin: 8px 0;
+    text-align: center;
+    font-size: 24px;
+    font-weight: 900;
+  }
+  #btn-suivant {
+    margin-top: 12px;
+    font-size: 19px;
+  }
+  #ecran-fin .btn {
+    margin-top: 16px;
+    font-size: 18px;
+  }
+  .motif {
+    margin-top: 12px;
+    padding: 12px;
+    font-size: 15px;
+  }
+</style>
 </head>
 <body>
 <div class="ecran">
@@ -19,37 +221,67 @@
 
   <p class="jour">Pièces gagnées aujourd’hui : <b id="jour">0 / 50</b></p>
   <p id="erreur" class="err"></p>
+  <p id="bandeau-grade" class="bandeau" hidden></p>
 
-  <section id="ecran-accueil">
-    <h2 class="titre">Choisis un round</h2>
-    <div id="liste-rounds"></div>
+  <section id="ecran-niveau">
+    <h2 class="titre">Choisis ton niveau</h2>
+    <div id="liste-niveaux"></div>
+    <p id="vide-msg" class="info centre" hidden>Les questions arrivent bientôt. Reviens vite !</p>
+  </section>
+
+  <section id="ecran-matiere" hidden>
+    <button id="btn-retour-niveaux" class="lien">← Changer de niveau</button>
+    <h2 id="titre-niveau" class="titre"></h2>
+    <p class="info centre">Choisis ta matière</p>
+    <div id="liste-matieres"></div>
   </section>
 
   <section id="ecran-quiz" hidden>
+    <div class="entete-quiz">
+      <span id="nom-seance"></span>
+      <span id="score-seance" class="score-seance"></span>
+    </div>
     <div class="ligne-q">
-      <span id="progression" class="info"></span>
+      <span id="etiquette-q" class="info"></span>
       <span id="serie" class="serie"></span>
     </div>
     <h2 id="question"></h2>
     <div id="choix"></div>
     <p id="retour-rep" class="retour-rep"></p>
     <p id="explication" class="expl" hidden></p>
-    <button id="btn-suivant" class="btn vert" hidden>Suivant →</button>
-    <button id="btn-quitter" class="lien">Quitter le round</button>
+    <button id="btn-suivant" class="btn vert" hidden>Question suivante →</button>
+    <button id="btn-signaler" class="lien" hidden>⚠️ Signaler cette question</button>
+    <button id="btn-quitter" class="lien">Terminer la séance</button>
   </section>
 
   <section id="ecran-fin" hidden>
-    <h2 class="titre">Round terminé</h2>
+    <h2 class="titre">Séance terminée</h2>
     <p id="resultat" class="grand"></p>
     <p id="message" class="info centre"></p>
-    <button id="btn-retour" class="btn vert">Retour aux rounds</button>
+    <button id="btn-continuer" class="btn vert">Continuer</button>
+    <button id="btn-matieres" class="btn bleu">Changer de matière</button>
+    <a class="btn jaune" href="accueil.html">Accueil</a>
   </section>
 
 </div>
+
+<div id="fond-signal" class="fond" hidden>
+  <div class="popup">
+    <div class="ruban">SIGNALER</div>
+    <button id="fermer-signal" class="croix" aria-label="Fermer">✕</button>
+    <p class="info centre">Qu’est-ce qui ne va pas dans cette question ?</p>
+    <button class="btn bleu motif" data-m="fausse">❌ La bonne réponse est fausse</button>
+    <button class="btn bleu motif" data-m="faute">✏️ Faute ou texte incorrect</button>
+    <button class="btn bleu motif" data-m="ambigue">🤔 Question ambiguë</button>
+    <button class="btn bleu motif" data-m="autre">💬 Autre problème</button>
+    <p id="signal-msg" class="message"></p>
+  </div>
+</div>
+
 <script
   type="module"
   src="script.js"
-  onerror="document.getElementById('erreur').textContent = 'Fichier introuvable : vérifie script.js, firebase.js, rounds.js, sons.js et progression.js dans ton dépôt.'"
+  onerror="document.getElementById('erreur').textContent = 'Fichier introuvable : vérifie script.js, firebase.js, rounds.js, matieres.js, outils.js, sons.js et progression.js dans ton dépôt.'"
 ></script>
 </body>
-</html>
+  </html>
