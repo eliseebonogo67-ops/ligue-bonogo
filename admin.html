@@ -48,11 +48,13 @@
     font-weight: 700;
   }
   textarea {
+    resize: vertical;
+  }
+  #json {
     height: 170px;
     font-family: monospace;
     font-size: 12px;
     font-weight: 400;
-    resize: vertical;
   }
   .coche {
     display: flex;
@@ -98,7 +100,7 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
     font-size: 14px;
   }
-  .ligne span {
+  .ligne span.t {
     flex: 1;
     min-width: 0;
   }
@@ -106,16 +108,98 @@
     display: block;
     color: #aab4ff;
   }
-  .ligne button {
+  .btns {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     flex: none;
+  }
+  .mini {
     padding: 8px 10px;
     border-radius: 10px;
-    border: 2px solid #b03b4a;
-    background: none;
-    color: #ff8a80;
+    border: 2px solid #4a58c0;
+    background: rgba(255, 255, 255, 0.07);
+    color: #cfd6ff;
     font-family: inherit;
+    font-size: 13px;
     font-weight: 800;
     cursor: pointer;
+  }
+  .mini.danger {
+    border-color: #b03b4a;
+    color: #ff8a80;
+    background: none;
+  }
+  .mini.ok {
+    border-color: #2c9e12;
+    color: #9be86b;
+  }
+  .carte-q {
+    margin: 14px 0;
+    padding: 12px;
+    border-radius: 16px;
+    border: 2px solid var(--bord);
+    background: rgba(0, 0, 25, 0.45);
+  }
+  .carte-q.vise {
+    border-color: #ff8a80;
+    box-shadow: 0 0 16px rgba(255, 138, 128, 0.45);
+  }
+  .carte-q h3 {
+    margin: 0 0 10px;
+    font-size: 15px;
+    color: #ffd54a;
+  }
+  .carte-q textarea {
+    height: 90px;
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+  .carte-q textarea.court {
+    height: 70px;
+    font-weight: 400;
+  }
+  .choix-ligne {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .choix-ligne input[type="radio"] {
+    flex: none;
+    width: 22px;
+    height: 22px;
+  }
+  .choix-ligne input[type="text"] {
+    flex: 1;
+    margin: 0;
+    padding: 10px;
+    font-size: 14px;
+  }
+  .rangee-btn {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .filtres {
+    display: flex;
+    gap: 8px;
+  }
+  .filtres select {
+    margin-bottom: 8px;
+    padding: 10px;
+    font-size: 14px;
+  }
+  .pastille {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: #ff3b30;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
   }
 </style>
 </head>
@@ -139,15 +223,36 @@
   </section>
 
   <section class="popup bloc">
+    <div class="ruban">SIGNALEMENTS</div>
+    <p id="resume-signaux" class="aide"></p>
+    <div id="signalements"></div>
+    <p id="etat-signaux" class="aide"></p>
+    <button id="btn-actualiser" class="btn bleu petit">↻ Actualiser</button>
+  </section>
+
+  <section id="bloc-editeur" class="popup bloc" hidden>
+    <div class="ruban">MODIFIER</div>
+    <div id="editeur"></div>
+    <button id="btn-fermer-editeur" class="btn bleu petit">Fermer l’éditeur</button>
+  </section>
+
+  <section class="popup bloc">
+    <div class="ruban">CATALOGUE</div>
+    <div class="filtres">
+      <select id="f-niveau"></select>
+      <select id="f-matiere"></select>
+    </div>
+    <p id="compte-catalogue" class="aide"></p>
+    <div id="liste"></div>
+  </section>
+
+  <section class="popup bloc">
     <div class="ruban">IMPORTER</div>
     <label for="niveau">Niveau</label>
-    <select id="niveau">
-      <option>BEPC</option>
-      <option>BAC</option>
-      <option>Autre</option>
-    </select>
+    <select id="niveau"></select>
     <label for="matiere">Matière</label>
-    <input id="matiere" type="text" placeholder="Ex : SVT" autocomplete="off">
+    <select id="matiere"></select>
+    <input id="matiere-autre" type="text" placeholder="Nom de la matière" autocomplete="off" hidden>
     <label class="coche"><input id="calcul" type="checkbox"> Questions de calcul (chrono plus long)</label>
     <label for="json">JSON de ton ancienne app</label>
     <textarea id="json" placeholder='[{"texte":"…","reponses":[{"texte":"…","correct":true}, …],"explication":"…"}, …]'></textarea>
@@ -156,13 +261,8 @@
     <button id="btn-enregistrer" class="btn vert petit" hidden>💾 Enregistrer dans la ligue</button>
   </section>
 
-  <section class="popup bloc">
-    <div class="ruban">CATALOGUE</div>
-    <div id="liste"></div>
-  </section>
-
   <p id="msg" class="message"></p>
-  <p class="message">Les séries importées sont ajoutées à la fin. Évite de supprimer une série quand des joueurs sont en partie : les suivantes changent de place.</p>
+  <p class="message">Chaque correction est visible tout de suite par les joueurs, qui rechargent leur catalogue à l’ouverture de l’application. Évite de supprimer une série quand des joueurs sont en compétition.</p>
 
 </div>
 
@@ -182,41 +282,566 @@
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import { ref, get, set, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
+import { NIVEAUX, MATIERES, infoNiveau, infoMatiere, slugTexte, normaliserNiveau, normaliserMatiere } from "./matieres.js";
 
 const $ = function (id) {
   return document.getElementById(id);
 };
 
+const MOTIFS = {
+  fausse: "❌ Réponse fausse",
+  faute: "✏️ Faute",
+  ambigue: "🤔 Ambiguë",
+  autre: "💬 Autre"
+};
+
 let uid = null;
 let catalogue = {};
+let signaux = {};
 let preparees = [];
+let edition = null;
 
 function dire(texte) {
   $("msg").textContent = texte;
 }
 
-function slug(texte) {
-  return String(texte)
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 20);
+function el(tag, classe, texte) {
+  const e = document.createElement(tag);
+  if (classe) e.className = classe;
+  if (texte !== undefined) e.textContent = texte;
+  return e;
 }
 
 function nettoyer(texte, max) {
   return String(texte === undefined || texte === null ? "" : texte).trim().slice(0, max);
 }
 
-// Convertit une question de l'ancienne app : { texte, reponses: [{ texte, correct }], explication }
+function enTableau(v) {
+  if (Array.isArray(v)) return v;
+  if (!v || typeof v !== "object") return [];
+  return Object.keys(v)
+    .sort(function (a, b) {
+      return Number(a) - Number(b);
+    })
+    .map(function (k) {
+      return v[k];
+    });
+}
+
+function erreurDroits(e, action) {
+  if (e.code === "PERMISSION_DENIED") {
+    dire("Refusé : touche d’abord « Devenir administrateur » (ou tu n’es pas l’administrateur sur ce téléphone).");
+  } else {
+    dire(action + " impossible : " + (e.code || e.message));
+  }
+}
+
+function remplirSelect(select, options, valeur) {
+  select.innerHTML = "";
+  options.forEach(function (o) {
+    const opt = document.createElement("option");
+    opt.value = o.id;
+    opt.textContent = o.nom;
+    select.appendChild(opt);
+  });
+  if (valeur !== undefined) select.value = valeur;
+}
+
+// ===== Données =====
+async function chargerTout() {
+  const snap = await get(ref(db, "sujets"));
+  catalogue = snap.exists() ? snap.val() : {};
+  try {
+    const s = await get(ref(db, "signalements"));
+    signaux = s.exists() ? s.val() : {};
+    $("etat-signaux").textContent = "";
+  } catch (e) {
+    signaux = {};
+    $("etat-signaux").textContent = "Les signalements ne sont visibles que par l’administrateur.";
+  }
+  afficherSignalements();
+  afficherCatalogue();
+}
+
+function compteSignaux(rid, idx) {
+  const p = signaux[rid] && signaux[rid][idx];
+  return p ? Object.keys(p).length : 0;
+}
+
+function nombreSignauxSerie(rid) {
+  let n = 0;
+  Object.keys(signaux[rid] || {}).forEach(function (idx) {
+    n += compteSignaux(rid, idx);
+  });
+  return n;
+}
+
+function listeSignaux() {
+  const res = [];
+  Object.keys(signaux).forEach(function (rid) {
+    const parIdx = signaux[rid] || {};
+    Object.keys(parIdx).forEach(function (idx) {
+      const parUid = parIdx[idx] || {};
+      const motifs = {};
+      let total = 0;
+      let derniere = 0;
+      Object.keys(parUid).forEach(function (u) {
+        const m = parUid[u] || {};
+        motifs[m.m] = (motifs[m.m] || 0) + 1;
+        total++;
+        derniere = Math.max(derniere, m.t || 0);
+      });
+      if (total > 0) res.push({ rid: rid, idx: parseInt(idx, 10), total: total, motifs: motifs, derniere: derniere });
+    });
+  });
+  res.sort(function (a, b) {
+    return b.total - a.total || b.derniere - a.derniere;
+  });
+  return res;
+}
+
+// ===== Signalements =====
+function afficherSignalements() {
+  const zone = $("signalements");
+  zone.innerHTML = "";
+  const liste = listeSignaux();
+  $("resume-signaux").textContent = liste.length
+    ? "🚩 " + liste.length + " question(s) signalée(s) par les élèves"
+    : "Aucun signalement pour le moment.";
+
+  liste.forEach(function (s) {
+    const serie = catalogue[s.rid];
+    const questions = serie ? enTableau(serie.questions) : [];
+    const q = questions[s.idx];
+
+    const ligne = el("div", "ligne");
+    const t = el("span", "t", serie ? serie.titre + " · question " + (s.idx + 1) : s.rid + " (série supprimée)");
+    const apercu = el("small", "", q ? String(q.q).slice(0, 90) : "Question introuvable");
+    const motifs = el(
+      "small",
+      "",
+      "🚩 " + s.total + " · " +
+        Object.keys(s.motifs)
+          .map(function (m) {
+            return (MOTIFS[m] || m) + " ×" + s.motifs[m];
+          })
+          .join(" · ")
+    );
+    t.appendChild(apercu);
+    t.appendChild(motifs);
+
+    const btns = el("div", "btns");
+    if (q) {
+      const b1 = el("button", "mini", "Corriger");
+      b1.addEventListener("click", function () {
+        ouvrirEditeur(s.rid, s.idx);
+      });
+      btns.appendChild(b1);
+    }
+    const b2 = el("button", "mini ok", "Résolu");
+    b2.addEventListener("click", function () {
+      resoudre(s.rid, s.idx);
+    });
+    btns.appendChild(b2);
+
+    ligne.appendChild(t);
+    ligne.appendChild(btns);
+    zone.appendChild(ligne);
+  });
+}
+
+async function resoudre(rid, idx) {
+  try {
+    const maj = {};
+    maj["signalements/" + rid + "/" + idx] = null;
+    await update(ref(db), maj);
+    if (signaux[rid]) delete signaux[rid][idx];
+    dire("Signalement effacé.");
+    afficherSignalements();
+    afficherCatalogue();
+  } catch (e) {
+    erreurDroits(e, "Opération");
+  }
+}
+
+// ===== Catalogue =====
+function afficherCatalogue() {
+  const fn = $("f-niveau").value;
+  const fm = $("f-matiere").value;
+  const zone = $("liste");
+  zone.innerHTML = "";
+
+  const ids = Object.keys(catalogue)
+    .filter(function (id) {
+      const s = catalogue[id];
+      const n = normaliserNiveau(s.niveau);
+      const m = normaliserMatiere(s.matiere);
+      if (fn === "non") return !n || !m;
+      if (fn && n !== fn) return false;
+      if (fm && m !== fm) return false;
+      return true;
+    })
+    .sort(function (a, b) {
+      return (catalogue[a].ordre || 0) - (catalogue[b].ordre || 0);
+    });
+
+  $("compte-catalogue").textContent = ids.length + " série(s) affichée(s) sur " + Object.keys(catalogue).length;
+  if (ids.length === 0) {
+    zone.appendChild(el("p", "aide", "Aucune série pour ce filtre."));
+    return;
+  }
+
+  ids.forEach(function (id) {
+    const s = catalogue[id];
+    const n = normaliserNiveau(s.niveau);
+    const m = normaliserMatiere(s.matiere);
+    const nb = enTableau(s.questions).length;
+    const sig = nombreSignauxSerie(id);
+
+    const ligne = el("div", "ligne");
+    const t = el("span", "t", s.titre);
+    if (sig) t.appendChild(el("span", "pastille", "🚩 " + sig));
+    t.appendChild(
+      el(
+        "small",
+        "",
+        (n && m ? infoNiveau(n).nom + " · " + infoMatiere(m).nom : "⚠️ non classée") + " · " + nb + " questions"
+      )
+    );
+
+    const btns = el("div", "btns");
+    const b1 = el("button", "mini", "Modifier");
+    b1.addEventListener("click", function () {
+      ouvrirEditeur(id, null);
+    });
+    const b2 = el("button", "mini danger", "Supprimer");
+    b2.addEventListener("click", function () {
+      supprimerSerie(id);
+    });
+    btns.appendChild(b1);
+    btns.appendChild(b2);
+
+    ligne.appendChild(t);
+    ligne.appendChild(btns);
+    zone.appendChild(ligne);
+  });
+}
+
+async function supprimerSerie(id) {
+  const s = catalogue[id];
+  if (!window.confirm("Supprimer toute la série « " + s.titre + " » ?")) return;
+  const maj = {};
+  maj["sujets/" + id] = null;
+  maj["signalements/" + id] = null;
+  maj["catalogue/version"] = Date.now();
+  try {
+    await update(ref(db), maj);
+    delete catalogue[id];
+    delete signaux[id];
+    if (edition && edition.id === id) fermerEditeur();
+    dire("Série supprimée.");
+    afficherSignalements();
+    afficherCatalogue();
+  } catch (e) {
+    erreurDroits(e, "Suppression");
+  }
+}
+
+// ===== Éditeur d'une série =====
+function fermerEditeur() {
+  edition = null;
+  $("bloc-editeur").hidden = true;
+  $("editeur").innerHTML = "";
+}
+
+function ouvrirEditeur(id, cible) {
+  const s = catalogue[id];
+  if (!s) return;
+  edition = {
+    id: id,
+    questions: enTableau(s.questions).map(function (q) {
+      return JSON.parse(JSON.stringify(q));
+    })
+  };
+  rendreEditeur(cible);
+  $("bloc-editeur").hidden = false;
+  $("bloc-editeur").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function rendreEditeur(cible) {
+  const zone = $("editeur");
+  zone.innerHTML = "";
+  const s = catalogue[edition.id];
+
+  // Informations de la série
+  zone.appendChild(el("label", "", "Titre de la série"));
+  const titre = el("input");
+  titre.type = "text";
+  titre.value = s.titre || "";
+  titre.maxLength = 80;
+  zone.appendChild(titre);
+
+  zone.appendChild(el("label", "", "Niveau"));
+  const niveau = el("select");
+  remplirSelect(niveau, [{ id: "", nom: "— non classé —" }].concat(NIVEAUX), normaliserNiveau(s.niveau));
+  zone.appendChild(niveau);
+
+  zone.appendChild(el("label", "", "Matière"));
+  const matiere = el("select");
+  const mActuelle = normaliserMatiere(s.matiere);
+  const optionsM = [{ id: "", nom: "— non classée —" }].concat(MATIERES);
+  if (mActuelle && !MATIERES.some(function (m) { return m.id === mActuelle; })) {
+    optionsM.push({ id: mActuelle, nom: infoMatiere(mActuelle).nom });
+  }
+  remplirSelect(matiere, optionsM, mActuelle);
+  zone.appendChild(matiere);
+
+  const bInfos = el("button", "btn vert petit", "💾 Enregistrer le titre et le classement");
+  bInfos.addEventListener("click", function () {
+    sauverInfos(titre.value, niveau.value, matiere.value);
+  });
+  zone.appendChild(bInfos);
+
+  // Les questions
+  const zq = el("div");
+  zone.appendChild(zq);
+  edition.questions.forEach(function (q, i) {
+    zq.appendChild(carteQuestion(q, i, i === cible, false));
+  });
+
+  const bAjout = el("button", "btn bleu petit", "➕ Ajouter une question");
+  bAjout.addEventListener("click", function () {
+    const i = zq.children.length;
+    const c = carteQuestion({ q: "", choix: ["", ""], bonne: 0, expl: "" }, i, true, true);
+    zq.appendChild(c);
+    c.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+  zone.appendChild(bAjout);
+
+  const bSupp = el("button", "btn jaune petit", "🗑️ Supprimer toute la série");
+  bSupp.addEventListener("click", function () {
+    supprimerSerie(edition.id);
+  });
+  zone.appendChild(bSupp);
+
+  if (cible !== null && cible !== undefined && zq.children[cible]) {
+    setTimeout(function () {
+      zq.children[cible].scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 250);
+  }
+}
+
+function carteQuestion(q, i, vise, nouvelle) {
+  const carte = el("div", "carte-q" + (vise ? " vise" : ""));
+  const n = nouvelle ? 0 : compteSignaux(edition.id, i);
+  carte.appendChild(el("h3", "", "Question " + (i + 1) + (nouvelle ? " (nouvelle)" : "") + (n ? "  🚩 " + n : "")));
+
+  const texte = el("textarea");
+  texte.value = q.q || "";
+  texte.placeholder = "Texte de la question";
+  carte.appendChild(texte);
+
+  const zoneChoix = el("div");
+  const nom = "bonne_" + edition.id + "_" + i;
+  function ajouterLigne(valeur, coche) {
+    const l = el("div", "choix-ligne");
+    const r = el("input");
+    r.type = "radio";
+    r.name = nom;
+    r.checked = !!coche;
+    const t = el("input");
+    t.type = "text";
+    t.value = valeur;
+    t.placeholder = "Choix";
+    t.maxLength = 300;
+    const x = el("button", "mini danger", "✕");
+    x.addEventListener("click", function () {
+      if (zoneChoix.children.length <= 2) return;
+      const etaitCoche = r.checked;
+      zoneChoix.removeChild(l);
+      if (etaitCoche) zoneChoix.querySelector("input[type=radio]").checked = true;
+    });
+    l.appendChild(r);
+    l.appendChild(t);
+    l.appendChild(x);
+    zoneChoix.appendChild(l);
+  }
+  const choix = Array.isArray(q.choix) ? q.choix : [];
+  choix.forEach(function (c, k) {
+    ajouterLigne(c, k === q.bonne);
+  });
+  carte.appendChild(el("label", "", "Choix (coche la bonne réponse)"));
+  carte.appendChild(zoneChoix);
+
+  const bChoix = el("button", "mini", "+ Ajouter un choix");
+  bChoix.addEventListener("click", function () {
+    if (zoneChoix.children.length < 4) ajouterLigne("", false);
+  });
+  carte.appendChild(bChoix);
+
+  carte.appendChild(el("label", "", "Explication (montrée seulement à l’entraînement)"));
+  const expl = el("textarea", "court");
+  expl.value = q.expl || "";
+  carte.appendChild(expl);
+
+  const rangee = el("div", "rangee-btn");
+  const bSauv = el("button", "mini ok", "💾 Enregistrer cette question");
+  bSauv.addEventListener("click", function () {
+    sauverQuestion(i, carte, zoneChoix, texte, expl, nouvelle);
+  });
+  const bDel = el("button", "mini danger", "🗑️ Supprimer cette question");
+  bDel.addEventListener("click", function () {
+    supprimerQuestion(i, carte, nouvelle);
+  });
+  rangee.appendChild(bSauv);
+  rangee.appendChild(bDel);
+  carte.appendChild(rangee);
+  return carte;
+}
+
+function lireQuestion(zoneChoix, texte, expl) {
+  const q = nettoyer(texte.value, 500);
+  if (!q) return { erreur: "Écris le texte de la question." };
+  const lignes = Array.prototype.slice.call(zoneChoix.children);
+  const choix = lignes.map(function (l) {
+    return nettoyer(l.querySelector("input[type=text]").value, 300);
+  });
+  if (choix.length < 2 || choix.length > 4) return { erreur: "Il faut entre 2 et 4 choix." };
+  if (
+    choix.some(function (c) {
+      return c === "";
+    })
+  ) {
+    return { erreur: "Un choix est vide : remplis-le ou retire-le." };
+  }
+  let bonne = -1;
+  lignes.forEach(function (l, k) {
+    if (l.querySelector("input[type=radio]").checked) bonne = k;
+  });
+  if (bonne < 0) return { erreur: "Coche la bonne réponse." };
+  const res = { q: q, choix: choix, bonne: bonne };
+  const e = nettoyer(expl.value, 700);
+  if (e) res.expl = e;
+  return { question: res };
+}
+
+async function sauverQuestion(i, carte, zoneChoix, texte, expl, nouvelle) {
+  const r = lireQuestion(zoneChoix, texte, expl);
+  if (r.erreur) {
+    dire(r.erreur);
+    return;
+  }
+  const id = edition.id;
+  if (nouvelle && i !== edition.questions.length) {
+    dire("Enregistre d’abord les questions nouvelles qui précèdent celle-ci (dans l’ordre).");
+    return;
+  }
+  const maj = {};
+  maj["sujets/" + id + "/questions/" + i] = r.question;
+  maj["catalogue/version"] = Date.now();
+  try {
+    await update(ref(db), maj);
+  } catch (e) {
+    erreurDroits(e, "Enregistrement");
+    return;
+  }
+  edition.questions[i] = r.question;
+  const qs = enTableau(catalogue[id].questions);
+  qs[i] = r.question;
+  catalogue[id].questions = qs;
+
+  let msg = "✓ Question enregistrée : les joueurs la voient corrigée à leur prochaine ouverture.";
+  if (!nouvelle && compteSignaux(id, i) > 0) {
+    if (window.confirm("Marquer les signalements de cette question comme résolus ?")) {
+      try {
+        const m2 = {};
+        m2["signalements/" + id + "/" + i] = null;
+        await update(ref(db), m2);
+        delete signaux[id][i];
+      } catch (e) {
+        msg += " (signalements non effacés)";
+      }
+    }
+  }
+  dire(msg);
+  afficherSignalements();
+  afficherCatalogue();
+  rendreEditeur(i);
+}
+
+async function supprimerQuestion(i, carte, nouvelle) {
+  if (nouvelle) {
+    carte.parentNode.removeChild(carte);
+    return;
+  }
+  const id = edition.id;
+  const restantes = edition.questions.slice();
+  if (restantes.length <= 1) {
+    dire("Une série doit garder au moins une question : supprime plutôt la série entière.");
+    return;
+  }
+  if (!window.confirm("Supprimer la question " + (i + 1) + " ? Les modifications non enregistrées des autres questions seront perdues.")) return;
+  restantes.splice(i, 1);
+  const maj = {};
+  maj["sujets/" + id + "/questions"] = restantes;
+  // les numéros changent : on efface les signalements de cette série
+  maj["signalements/" + id] = null;
+  maj["catalogue/version"] = Date.now();
+  try {
+    await update(ref(db), maj);
+  } catch (e) {
+    erreurDroits(e, "Suppression");
+    return;
+  }
+  edition.questions = restantes;
+  catalogue[id].questions = restantes;
+  delete signaux[id];
+  dire("Question supprimée. Les signalements de cette série ont été effacés (les numéros ont changé).");
+  afficherSignalements();
+  afficherCatalogue();
+  rendreEditeur(null);
+}
+
+async function sauverInfos(titre, niveau, matiere) {
+  titre = nettoyer(titre, 80);
+  if (!titre) {
+    dire("Le titre ne peut pas être vide.");
+    return;
+  }
+  const id = edition.id;
+  const maj = {};
+  maj["sujets/" + id + "/titre"] = titre;
+  maj["sujets/" + id + "/niveau"] = niveau || null;
+  maj["sujets/" + id + "/matiere"] = matiere || null;
+  maj["catalogue/version"] = Date.now();
+  try {
+    await update(ref(db), maj);
+  } catch (e) {
+    erreurDroits(e, "Enregistrement");
+    return;
+  }
+  catalogue[id].titre = titre;
+  catalogue[id].niveau = niveau;
+  catalogue[id].matiere = matiere;
+  dire("✓ Titre et classement enregistrés.");
+  afficherSignalements();
+  afficherCatalogue();
+}
+
+// ===== Importer =====
 function convertir(q) {
   if (!q || typeof q.texte !== "string" || !Array.isArray(q.reponses)) return { erreur: "format" };
 
   const choix = q.reponses.map(function (r) {
     return nettoyer(r ? r.texte : "", 300);
   });
-  if (choix.length < 2 || choix.length > 4 || choix.some(function (c) { return c === ""; })) {
+  if (
+    choix.length < 2 ||
+    choix.length > 4 ||
+    choix.some(function (c) {
+      return c === "";
+    })
+  ) {
     return { erreur: "choix" };
   }
 
@@ -233,11 +858,35 @@ function convertir(q) {
   return { question: res };
 }
 
+function nomMatiereImport() {
+  if ($("matiere").value === "autre") return nettoyer($("matiere-autre").value, 30);
+  return infoMatiere($("matiere").value).nom;
+}
+
+function idMatiereImport() {
+  if ($("matiere").value === "autre") return normaliserMatiere($("matiere-autre").value);
+  return $("matiere").value;
+}
+
+// Toutes les questions déjà présentes pour ce niveau et cette matière (pour éviter les doublons)
+function textesExistants(niveau, matiere) {
+  const pris = {};
+  Object.keys(catalogue).forEach(function (id) {
+    const s = catalogue[id];
+    if (normaliserNiveau(s.niveau) !== niveau || normaliserMatiere(s.matiere) !== matiere) return;
+    enTableau(s.questions).forEach(function (q) {
+      if (q && q.q) pris[slugTexte(q.q)] = true;
+    });
+  });
+  return pris;
+}
+
 function analyser() {
   preparees = [];
   $("btn-enregistrer").hidden = true;
 
-  if (!$("matiere").value.trim()) {
+  const matiere = idMatiereImport();
+  if (!matiere) {
     $("rapport").textContent = "Écris d’abord le nom de la matière.";
     return;
   }
@@ -260,14 +909,23 @@ function analyser() {
     return;
   }
 
+  const existants = textesExistants($("niveau").value, matiere);
   const ok = [];
   let plusieurs = 0;
   let choixKo = 0;
   let formatKo = 0;
+  let doublons = 0;
   liste.forEach(function (q) {
     const r = convertir(q);
-    if (r.question) ok.push(r.question);
-    else if (r.erreur === "bonnes") plusieurs++;
+    if (r.question) {
+      const cle = slugTexte(r.question.q);
+      if (existants[cle]) {
+        doublons++;
+      } else {
+        existants[cle] = true;
+        ok.push(r.question);
+      }
+    } else if (r.erreur === "bonnes") plusieurs++;
     else if (r.erreur === "choix") choixKo++;
     else formatKo++;
   });
@@ -282,67 +940,26 @@ function analyser() {
   preparees = groupes;
 
   let texte = liste.length + " question(s) lue(s)\n";
-  texte += "• " + ok.length + " utilisable(s)\n";
+  texte += "• " + ok.length + " nouvelle(s) utilisable(s)\n";
+  if (doublons) texte += "• " + doublons + " doublon(s) ignoré(s) : déjà dans le catalogue\n";
   if (plusieurs) texte += "• " + plusieurs + " ignorée(s) : zéro ou plusieurs bonnes réponses\n";
   if (choixKo) texte += "• " + choixKo + " ignorée(s) : moins de 2 ou plus de 4 choix\n";
   if (formatKo) texte += "• " + formatKo + " ignorée(s) : format incorrect\n";
   if (restantes) texte += "• " + restantes + " question(s) en trop non utilisée(s)\n";
   texte += groupes.length
-    ? "→ " + groupes.length + " série(s) de 5 questions (ou 3 à 4 pour la dernière)"
-    : "→ Aucune série possible (il faut au moins 3 questions utilisables).";
+    ? "→ " + groupes.length + " série(s) (5 questions, ou 3 à 4 pour la dernière)"
+    : "→ Aucune série possible (il faut au moins 3 nouvelles questions).";
   $("rapport").textContent = texte;
 
   if (groupes.length > 0) $("btn-enregistrer").hidden = false;
 }
 
-async function chargerCatalogue() {
-  const snap = await get(ref(db, "sujets"));
-  catalogue = snap.exists() ? snap.val() : {};
-  afficherCatalogue();
-}
-
-function afficherCatalogue() {
-  const zone = $("liste");
-  zone.innerHTML = "";
-  const ids = Object.keys(catalogue).sort(function (a, b) {
-    return (catalogue[a].ordre || 0) - (catalogue[b].ordre || 0);
-  });
-  if (ids.length === 0) {
-    const p = document.createElement("p");
-    p.className = "aide";
-    p.textContent = "Aucune série importée pour le moment.";
-    zone.appendChild(p);
-    return;
-  }
-  ids.forEach(function (id) {
-    const s = catalogue[id];
-    const n = Array.isArray(s.questions) ? s.questions.length : 0;
-    const ligne = document.createElement("div");
-    ligne.className = "ligne";
-
-    const texte = document.createElement("span");
-    texte.textContent = s.titre;
-    const petit = document.createElement("small");
-    petit.textContent = n + " questions";
-    texte.appendChild(petit);
-
-    const b = document.createElement("button");
-    b.textContent = "Supprimer";
-    b.addEventListener("click", function () {
-      supprimer(id, s.titre);
-    });
-
-    ligne.appendChild(texte);
-    ligne.appendChild(b);
-    zone.appendChild(ligne);
-  });
-}
-
 async function enregistrer() {
   if (!preparees.length) return;
   const niveau = $("niveau").value;
-  const matiere = $("matiere").value.trim();
-  const prefixe = slug(niveau) + "_" + slug(matiere) + ($("calcul").checked ? "_calcul" : "");
+  const matiere = idMatiereImport();
+  const nomMatiere = nomMatiereImport();
+  const prefixe = niveau + "_" + slugTexte(matiere) + ($("calcul").checked ? "_calcul" : "");
 
   let ordreMax = 0;
   Object.keys(catalogue).forEach(function (id) {
@@ -360,7 +977,7 @@ async function enregistrer() {
     } while (catalogue[id] || pris[id]);
     pris[id] = true;
     maj["sujets/" + id] = {
-      titre: niveau + " " + matiere + " · Série " + n,
+      titre: infoNiveau(niveau).nom + " " + nomMatiere + " · Série " + n,
       niveau: niveau,
       matiere: matiere,
       ordre: ordreMax + k + 1,
@@ -375,30 +992,13 @@ async function enregistrer() {
     preparees = [];
     $("btn-enregistrer").hidden = true;
     $("rapport").textContent = "";
-    await chargerCatalogue();
+    await chargerTout();
   } catch (e) {
-    if (e.code === "PERMISSION_DENIED") {
-      dire("Refusé : touche d’abord « Devenir administrateur » en haut de la page.");
-    } else {
-      dire("Enregistrement impossible : " + (e.code || e.message));
-    }
+    erreurDroits(e, "Enregistrement");
   }
 }
 
-async function supprimer(id, titre) {
-  if (!window.confirm("Supprimer « " + titre + " » ? Les séries suivantes changeront de place.")) return;
-  const maj = {};
-  maj["sujets/" + id] = null;
-  maj["catalogue/version"] = Date.now();
-  try {
-    await update(ref(db), maj);
-    dire("Série supprimée.");
-    await chargerCatalogue();
-  } catch (e) {
-    dire("Suppression impossible : " + (e.code || e.message));
-  }
-}
-
+// ===== Accès =====
 async function devenirAdmin() {
   try {
     await set(ref(db, "admin/uid"), uid);
@@ -415,17 +1015,26 @@ async function verifier() {
   try {
     await set(ref(db, "catalogue/version"), Date.now());
     $("etat-acces").textContent = "✓ Accès administrateur confirmé.";
+    await chargerTout();
   } catch (e) {
     $("etat-acces").textContent = "✗ Tu n’es pas administrateur sur ce téléphone.";
   }
 }
 
+function preparerFiltres() {
+  remplirSelect($("f-niveau"), [{ id: "", nom: "Tous les niveaux" }].concat(NIVEAUX).concat([{ id: "non", nom: "⚠️ Non classées" }]), "");
+  remplirSelect($("f-matiere"), [{ id: "", nom: "Toutes les matières" }].concat(MATIERES), "");
+  remplirSelect($("niveau"), NIVEAUX, "bepc");
+  remplirSelect($("matiere"), MATIERES.concat([{ id: "autre", nom: "Autre matière…" }]), "svt");
+}
+
 async function demarrer() {
+  preparerFiltres();
   try {
     const cred = await signInAnonymously(auth);
     uid = cred.user.uid;
     $("uid").textContent = uid;
-    await chargerCatalogue();
+    await chargerTout();
   } catch (e) {
     $("alerte").textContent = "Connexion impossible : " + (e.code || e.message);
   }
@@ -435,8 +1044,15 @@ $("btn-admin").addEventListener("click", devenirAdmin);
 $("btn-verif").addEventListener("click", verifier);
 $("btn-analyser").addEventListener("click", analyser);
 $("btn-enregistrer").addEventListener("click", enregistrer);
+$("btn-actualiser").addEventListener("click", chargerTout);
+$("btn-fermer-editeur").addEventListener("click", fermerEditeur);
+$("f-niveau").addEventListener("change", afficherCatalogue);
+$("f-matiere").addEventListener("change", afficherCatalogue);
+$("matiere").addEventListener("change", function () {
+  $("matiere-autre").hidden = $("matiere").value !== "autre";
+});
 
 demarrer();
 </script>
 </body>
-      </html>
+</html>
