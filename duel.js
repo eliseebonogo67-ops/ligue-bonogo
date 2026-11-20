@@ -11,6 +11,8 @@ import { ROUNDS } from "./rounds.js";
 import { initHorloge, maintenant } from "./horloge.js";
 import { Sons } from "./sons.js";
 import { article, DEFAUTS } from "./profil.js";
+import { ordreReproductible } from "./outils.js";
+import { installerSignalement } from "./signalement.js";
 
 // ===== Moteur du duel (réglages modifiables pour les tests) =====
 const DUREE_CULTURE_S = 30;
@@ -18,6 +20,7 @@ const DUREE_CALCUL_S = 45;
 const PAUSE_DEBUT_MS = 6000;
 const TOLERANCE_MS = 1500;
 const REVEAL_MS = 4000;
+const AVANCE_MS = 700; // petite pause avant le résultat quand les deux joueurs ont répondu
 const ECART_EGALITE_MS = 0;
 const DEUX_FAUX = "annulee"; // "annulee" ou "premier"
 
@@ -26,26 +29,36 @@ function dureeQuestionMs(rnd) {
   return s * 1000;
 }
 
-function planning(lanceLe, rnd) {
-  const duree = dureeQuestionMs(rnd);
-  let debut = lanceLe + PAUSE_DEBUT_MS;
-  return rnd.questions.map(function () {
-    const p = {
-      debut: debut,
-      fin: debut + duree,
-      revele: debut + duree + TOLERANCE_MS,
-      suivante: debut + duree + TOLERANCE_MS + REVEAL_MS
-    };
-    debut = p.suivante;
-    return p;
-  });
-}
-
 function reponseValide(rep, p) {
   if (!rep) return null;
   if (rep.t < p.debut - TOLERANCE_MS) return null;
   if (rep.t > p.fin + TOLERANCE_MS) return null;
   return rep;
+}
+
+// Le planning dépend des réponses : si les deux joueurs ont répondu avant la fin du chrono,
+// le résultat arrive tout de suite et la question suivante démarre plus tôt.
+function planning(donnees, rnd) {
+  const duree = dureeQuestionMs(rnd);
+  let debut = donnees.lanceLe + PAUSE_DEBUT_MS;
+  return rnd.questions.map(function (q, i) {
+    const fin = debut + duree;
+    const rq = (donnees.reponses && donnees.reponses["q" + i]) || {};
+    const r1 = reponseValide(rq[donnees.j1], { debut: debut, fin: fin });
+    const r2 = reponseValide(rq[donnees.j2], { debut: debut, fin: fin });
+    let revele = fin + TOLERANCE_MS;
+    if (r1 && r2) {
+      revele = Math.min(revele, Math.max(debut + 500, Math.max(r1.t, r2.t) + AVANCE_MS));
+    }
+    const p = {
+      debut: debut,
+      fin: fin,
+      revele: revele,
+      suivante: revele + REVEAL_MS
+    };
+    debut = p.suivante;
+    return p;
+  });
 }
 
 // gagnant : 1, 2, ou null (question annulée)
@@ -80,7 +93,7 @@ function resultatQuestion(q, rep1, rep2, p) {
 }
 
 function calculer(rnd, donnees, now) {
-  const plan = planning(donnees.lanceLe, rnd);
+  const plan = planning(donnees, rnd);
   const resultats = [];
   let v1 = 0;
   let v2 = 0;
@@ -178,6 +191,7 @@ let data = {};
 let lanceEnvoye = false;
 let envoyees = {};
 let rendu = "";
+let questionAffichee = 0;
 let paye = false;
 let payeEnCours = false;
 let regleEnCours = false;
@@ -193,6 +207,7 @@ let resultatEnregistre = false;
 let faceTexte = "";
 let revancheEnCours = false;
 let revancheSonJouee = false;
+let signal = null;
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -231,6 +246,7 @@ async function chargerNoms() {
   }
 }
 
+// c = numéro d'origine du choix (celui que le moteur compare à la bonne réponse)
 function maReponse(i) {
   if (envoyees[i] !== undefined) return envoyees[i];
   const r = data.reponses && data.reponses["q" + i] && data.reponses["q" + i][uid];
@@ -278,23 +294,28 @@ function majScore(calc) {
   $("marques-adv").textContent = mk.adv;
 }
 
+// Chaque joueur voit les réponses dans un ordre différent (fixe pour toute la question)
 function construireQuestion(i, q) {
+  questionAffichee = i;
   $("numero").textContent = "Question " + (i + 1) + " / " + round.questions.length;
   $("question").textContent = q.q;
   const zone = $("choix");
   zone.innerHTML = "";
-  q.choix.forEach(function (texte, k) {
+  const ordre = ordreReproductible(q.choix.length, matchId + "|" + uid + "|" + i);
+  ordre.forEach(function (origine) {
     const b = document.createElement("button");
-    b.textContent = texte;
+    b.textContent = q.choix[origine];
+    b.dataset.orig = String(origine);
     b.addEventListener("click", function () {
-      envoyer(i, k);
+      envoyer(i, origine);
     });
     zone.appendChild(b);
   });
 }
 
 function majBoutons(q, c, bloque, revele) {
-  document.querySelectorAll("#choix button").forEach(function (b, k) {
+  document.querySelectorAll("#choix button").forEach(function (b) {
+    const k = parseInt(b.dataset.orig, 10);
     b.disabled = bloque || c !== null;
     b.classList.toggle("choisi", c === k);
     b.classList.toggle("juste", revele && k === q.bonne);
@@ -331,8 +352,9 @@ function montrerQuestion(i, q) {
 // Pendant la question, l'écran ne réagit pas à ce que fait l'adversaire
 function phaseQuestion(i, q, p, now) {
   montrerQuestion(i, q);
+  signal.afficher(false);
   const reste = Math.ceil((p.fin - now) / 1000);
-  $("chrono").textContent = "⏱ " + reste + " s";
+  $("chrono").textContent = "⏱ " + Math.max(0, reste) + " s";
   const cleTic = i + "-" + reste;
   if (reste <= 5 && reste > 0 && dernierTic !== cleTic) {
     dernierTic = cleTic;
@@ -340,11 +362,13 @@ function phaseQuestion(i, q, p, now) {
   }
   const c = maReponse(i);
   majBoutons(q, c, false, false);
-  $("info").textContent = c !== null ? "Réponse envoyée ✓\nRésultat à la fin du chrono" : "";
+  $("info").textContent =
+    c !== null ? "Réponse envoyée ✓\nLe résultat arrive dès que ton adversaire a répondu" : "";
 }
 
 function phaseAttente(i, q) {
   montrerQuestion(i, q);
+  signal.afficher(false);
   $("chrono").textContent = "⏱ 0 s";
   majBoutons(q, maReponse(i), true, false);
   $("info").textContent = "Calcul du résultat…";
@@ -352,6 +376,7 @@ function phaseAttente(i, q) {
 
 function phaseResultat(i, q, p, calc, now) {
   montrerQuestion(i, q);
+  signal.afficher(true);
   const res = calc.resultats[i];
   const c = maReponse(i);
   majBoutons(q, c, true, true);
@@ -594,7 +619,7 @@ function afficher() {
     return;
   }
 
-  const plan = planning(data.lanceLe, round);
+  const plan = planning(data, round);
   const calc = calculer(round, data, now);
   majScore(calc);
 
@@ -625,12 +650,13 @@ function afficher() {
   const p = plan[i];
   const q = round.questions[i];
 
-  if (now < p.fin) {
-    phaseQuestion(i, q, p, now);
-  } else if (now < p.revele) {
+  // Le résultat peut arriver avant la fin du chrono si les deux ont répondu
+  if (now >= p.revele) {
+    phaseResultat(i, q, p, calc, now);
+  } else if (now >= p.fin) {
     phaseAttente(i, q);
   } else {
-    phaseResultat(i, q, p, calc, now);
+    phaseQuestion(i, q, p, now);
   }
 }
 
@@ -651,6 +677,17 @@ async function demarrer() {
     uid = cred.user.uid;
 
     await initHorloge();
+
+    // Le bouton « Signaler » n'apparaît qu'une fois le résultat de la question connu
+    signal = installerSignalement(
+      $("zone-question"),
+      function () {
+        return { rid: round.id, index: questionAffichee };
+      },
+      function () {
+        return uid;
+      }
+    );
 
     // Vérifier le solde avant de s'engager dans un match avec mise
     if (mise > 0) {
