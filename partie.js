@@ -14,6 +14,8 @@ import { ouvrirCycle, prolonger } from "./cycles.js";
 import { initHorloge, maintenant } from "./horloge.js";
 import { Sons } from "./sons.js";
 import { article, DEFAUTS } from "./profil.js";
+import { ordreReproductible } from "./outils.js";
+import { installerSignalement } from "./signalement.js";
 
 const params = new URLSearchParams(window.location.search);
 const salonId = params.get("s");
@@ -44,6 +46,8 @@ let signatureClassement = "";
 let profils = {};
 let profilsDemandes = {};
 let versionProfils = 0;
+let signal = null;
+let cibleSignal = null;
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -198,6 +202,7 @@ function afficherClassement(scores, enJeu, tous, marques) {
   zone.appendChild(bouton);
 }
 
+// c = numéro d'origine du choix (celui que le moteur compare à la bonne réponse)
 function maReponse(n, i) {
   const cle = n + "-" + i;
   if (envoyees[cle] !== undefined) return envoyees[cle];
@@ -205,12 +210,29 @@ function maReponse(n, i) {
   return r ? r.c : null;
 }
 
+// Les boutons sont mélangés : on retrouve le choix d'origine grâce à data-orig
 function majBoutons(q, c, bloque, revele) {
-  document.querySelectorAll("#choix button").forEach(function (b, k) {
+  document.querySelectorAll("#choix button").forEach(function (b) {
+    const k = parseInt(b.dataset.orig, 10);
     b.disabled = bloque || c !== null;
     b.classList.toggle("choisi", c === k);
     b.classList.toggle("juste", revele && k === q.bonne);
     b.classList.toggle("faux", revele && c === k && k !== q.bonne);
+  });
+}
+
+// Chaque joueur voit les réponses dans un ordre différent, fixe pour toute la question
+function construireChoix(q, graine, auClic) {
+  const zone = $("choix");
+  zone.innerHTML = "";
+  ordreReproductible(q.choix.length, graine).forEach(function (origine) {
+    const b = document.createElement("button");
+    b.textContent = q.choix[origine];
+    b.dataset.orig = String(origine);
+    b.addEventListener("click", function () {
+      auClic(origine);
+    });
+    zone.appendChild(b);
   });
 }
 
@@ -235,26 +257,21 @@ function montrerQuestion(m, i, q) {
   $("statut").hidden = true;
   $("zone-fin").hidden = true;
   $("zone-question").hidden = false;
+  cibleSignal = { rid: m.round.id, index: i };
   const cle = m.n + "-" + i;
   if (rendu !== cle) {
     rendu = cle;
     $("numero").textContent = "Question " + (i + 1) + " / " + m.round.questions.length;
     $("question").textContent = q.q;
-    const zone = $("choix");
-    zone.innerHTML = "";
-    q.choix.forEach(function (texte, k) {
-      const b = document.createElement("button");
-      b.textContent = texte;
-      b.addEventListener("click", function () {
-        envoyer(m.n, i, k, q);
-      });
-      zone.appendChild(b);
+    construireChoix(q, salonId + "|" + uid + "|" + cle, function (origine) {
+      envoyer(m.n, i, origine, q);
     });
   }
 }
 
 function phaseQuestion(m, i, q, p, now) {
   montrerQuestion(m, i, q);
+  signal.afficher(false);
   const reste = Math.ceil((p.fin - now) / 1000);
   $("chrono").textContent = "⏱ " + reste + " s";
   // Petit tic-tac pendant les 5 dernières secondes
@@ -270,6 +287,7 @@ function phaseQuestion(m, i, q, p, now) {
 
 function phaseCalcul(m, i, q) {
   montrerQuestion(m, i, q);
+  signal.afficher(false);
   $("chrono").textContent = "⏱ 0 s";
   majBoutons(q, maReponse(m.n, i), true, false);
   $("info").textContent = "Calcul du résultat…";
@@ -277,6 +295,7 @@ function phaseCalcul(m, i, q) {
 
 function phaseResultat(m, i, q, now) {
   montrerQuestion(m, i, q);
+  signal.afficher(true);
   const plan = m.plan;
   const suivante = i < plan.questions.length - 1 ? plan.questions[i + 1].debut : plan.fin;
   const c = maReponse(m.n, i);
@@ -314,14 +333,16 @@ function avantManche(t, m, tous, now) {
   etat((dedans ? "Tu continues" : "Tu es éliminé") + " · manche " + m.n + " dans " + reste + " s");
 }
 
-async function reclamer(gain) {
+// Encaisse le gain ; une victoire en solo (pas d'égalité) est comptée pour le titre « Champion »
+async function reclamer(gain, compteVictoire) {
   if (reclameEnCours) return;
   reclameEnCours = true;
   try {
-    const snap = await get(ref(db, "joueurs/" + uid + "/pieces"));
-    const solde = snap.exists() ? snap.val() : 0;
+    const snap = await get(ref(db, "joueurs/" + uid));
+    const v = snap.exists() ? snap.val() : {};
     const maj = {};
-    maj["joueurs/" + uid + "/pieces"] = solde + gain;
+    maj["joueurs/" + uid + "/pieces"] = (v.pieces || 0) + gain;
+    if (compteVictoire) maj["joueurs/" + uid + "/victoires"] = (v.victoires || 0) + 1;
     maj["parties/" + salonId + "/reclame/" + uid] = true;
     await update(ref(db), maj);
     bilan = "✓ " + gain + " 🪙 ajoutées à ton solde";
@@ -346,6 +367,7 @@ async function terminerCycle(fin) {
 function finTournoi(t, m, tous) {
   chargerProfils(t.gagnants);
   afficherClassement(m.scores, m.joueurs, tous, m.marques);
+  signal.afficher(false);
   $("titre-manche").textContent = "Partie terminée";
   $("statut").hidden = true;
   $("zone-question").hidden = true;
@@ -378,7 +400,7 @@ function finTournoi(t, m, tous) {
   let detail = "Cagnotte : " + pot() + " 🪙";
   if (jeGagne) {
     detail += "\nTu reçois " + gain + " 🪙";
-    reclamer(gain);
+    reclamer(gain, !t.partage);
     if (bilan) detail += "\n" + bilan;
   } else {
     detail += "\nTu perds ton droit d’entrée de " + miseDe(uid) + " 🪙";
@@ -397,15 +419,15 @@ function maReponseE(k) {
   return r ? r.c : null;
 }
 
-async function envoyerE(k, i, q) {
+async function envoyerE(k, origine, q) {
   const cle = "e" + k;
   if (envoyees[cle] !== undefined || maReponseE(k) !== null) return;
-  envoyees[cle] = i;
+  envoyees[cle] = origine;
   Sons.clic();
-  majBoutons(q, i, false, false);
+  majBoutons(q, origine, false, false);
   try {
     await set(ref(db, "parties/" + salonId + "/tours/t" + k + "/" + uid), {
-      c: i,
+      c: origine,
       t: maintenant()
     });
   } catch (e) {
@@ -417,21 +439,15 @@ function montrerQuestionE(d) {
   $("statut").hidden = true;
   $("zone-fin").hidden = true;
   $("zone-question").hidden = false;
+  cibleSignal = { rid: d.item.rid, index: d.item.qi };
   const cle = "e" + d.k;
   if (rendu !== cle) {
     rendu = cle;
     const q = d.item.q;
     $("numero").textContent = "Question " + (d.k + 1);
     $("question").textContent = q.q;
-    const zone = $("choix");
-    zone.innerHTML = "";
-    q.choix.forEach(function (texte, i) {
-      const b = document.createElement("button");
-      b.textContent = texte;
-      b.addEventListener("click", function () {
-        envoyerE(d.k, i, q);
-      });
-      zone.appendChild(b);
+    construireChoix(q, salonId + "|" + uid + "|" + cle, function (origine) {
+      envoyerE(d.k, origine, q);
     });
   }
 }
@@ -474,6 +490,7 @@ function afficherGagnants(g) {
 
 function phaseQuestionE(d, p, now) {
   montrerQuestionE(d);
+  signal.afficher(false);
   const q = d.item.q;
   const reste = Math.ceil((p.fin - now) / 1000);
   $("chrono").textContent = "⏱ " + reste + " s";
@@ -489,6 +506,7 @@ function phaseQuestionE(d, p, now) {
 
 function phaseCalculE(d) {
   montrerQuestionE(d);
+  signal.afficher(false);
   $("chrono").textContent = "⏱ 0 s";
   majBoutons(d.item.q, maReponseE(d.k), true, false);
   $("info").textContent = "Calcul du résultat…";
@@ -496,6 +514,7 @@ function phaseCalculE(d) {
 
 function phaseResultatE(d, now, restants) {
   montrerQuestionE(d);
+  signal.afficher(true);
   const q = d.item.q;
   const c = maReponseE(d.k);
   const bon = d.bons.indexOf(uid) !== -1;
@@ -524,6 +543,7 @@ function finElimination(t, d, tous) {
   const g = t.gagnants;
   chargerProfils(g);
   afficherGagnants(g);
+  signal.afficher(false);
   $("titre-manche").textContent = "Partie terminée";
   $("statut").hidden = true;
   $("zone-question").hidden = true;
@@ -555,7 +575,7 @@ function finElimination(t, d, tous) {
   let detail = "Cagnotte : " + pot() + " 🪙 · " + tous.length + " joueurs";
   if (jeGagne) {
     detail += "\nTu reçois " + gain + " 🪙";
-    reclamer(gain);
+    reclamer(gain, !t.partage);
     if (bilan) detail += "\n" + bilan;
   } else {
     detail += "\nTu perds ton droit d’entrée de " + miseDe(uid) + " 🪙";
@@ -715,6 +735,7 @@ function afficher() {
   $("retour").hidden = true;
 
   if (now < m.debut) {
+    signal.afficher(false);
     avantManche(t, m, tous, now);
     return;
   }
@@ -735,6 +756,7 @@ function afficher() {
   afficherClassement(m.scores, m.joueurs, tous, m.marques);
 
   if (m.joueurs.indexOf(uid) === -1) {
+    signal.afficher(false);
     etat("Tu es éliminé. Tu suis la suite…");
     return;
   }
@@ -785,6 +807,17 @@ async function demarrer() {
     uid = cred.user.uid;
 
     await initHorloge();
+
+    // Le bouton « Signaler » n'apparaît qu'une fois le résultat de la question connu
+    signal = installerSignalement(
+      $("zone-question"),
+      function () {
+        return cibleSignal;
+      },
+      function () {
+        return uid;
+      }
+    );
 
     onValue(ref(db, "salons/" + salonId), function (s) {
       salon = s.val();
