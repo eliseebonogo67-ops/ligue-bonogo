@@ -216,7 +216,7 @@ import {
   startAt
 } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { article, RARETES, DEFAUTS } from "./profil.js";
+import { article, DEFAUTS, remplirAvatar } from "./profil.js";
 import { semaineIl, resteSemaine } from "./progression.js";
 
 const $ = function (id) {
@@ -245,9 +245,7 @@ function compter(snap) {
 }
 
 function ligne(rang, id, p) {
-  const animal = article(p.animal) || article(DEFAUTS.animal);
   const titre = article(p.titre) || article(DEFAUTS.titre);
-  const r = RARETES[animal.rarete];
 
   const div = document.createElement("div");
   div.className = "rang" + (id === uid ? " cest-moi" : "");
@@ -258,9 +256,7 @@ function ligne(rang, id, p) {
 
   const mini = document.createElement("div");
   mini.className = "mini";
-  mini.textContent = animal.emoji;
-  mini.style.borderColor = r.couleur;
-  mini.style.boxShadow = r.ombre;
+  remplirAvatar(mini, p.animal, p.cadre);
 
   const texte = document.createElement("div");
   texte.className = "texte";
@@ -396,22 +392,22 @@ async function chargerChampions() {
   }
 }
 
-async function demarrer() {
-  try {
-    const cred = await signInAnonymously(auth);
-    uid = cred.user.uid;
-    await afficher();
-    await chargerChchampionsSecurise();
-  } catch (e) {
-    $("alerte").textContent = "Connexion impossible : " + (e.code || e.message);
-  }
-}
-
 async function chargerChampionsSecurise() {
   try {
     await chargerChampions();
   } catch (e) {
     $("champions").textContent = "";
+  }
+}
+
+async function demarrer() {
+  try {
+    const cred = await signInAnonymously(auth);
+    uid = cred.user.uid;
+    await afficher();
+    await chargerChampionsSecurise();
+  } catch (e) {
+    $("alerte").textContent = "Connexion impossible : " + (e.code || e.message);
   }
 }
 
@@ -427,4 +423,4 @@ $("onglet-1").addEventListener("click", function () {
 demarrer();
 </script>
 </body>
-  </html>
+</html>
