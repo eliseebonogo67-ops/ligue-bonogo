@@ -6,6 +6,7 @@ import { NIVEAUX, MATIERES, infoNiveau, infoMatiere } from "./matieres.js";
 import { ordreAleatoire, choixAleatoire } from "./outils.js";
 import { Sons, animerCompteur } from "./sons.js";
 import { aujourdhui, gradeDe, totalXp } from "./progression.js";
+import { assurerCompte } from "./abonnement.js";
 
 const PLAFOND_JOUR = 50;
 const CLE_HISTO = "ligue_historique";
@@ -416,22 +417,17 @@ async function demarrer() {
   try {
     const cred = await signInAnonymously(auth);
     uid = cred.user.uid;
+    // Premier passage : le compte est créé avec les 50 pièces de bienvenue
+    await assurerCompte(uid);
     const snap = await get(ref(db, "joueurs/" + uid));
-    if (!snap.exists() || snap.val().pieces === undefined) {
-      const maj = {};
-      maj["joueurs/" + uid + "/pieces"] = 0;
-      maj["joueurs/" + uid + "/creeLe"] = Date.now();
-      await update(ref(db), maj);
-    } else {
-      const v = snap.val();
-      fiche = {
-        pieces: v.pieces || 0,
-        jours: v.jours || {},
-        xp: v.xp || 0,
-        stats: v.stats || {},
-        jeux: v.jeux || {}
-      };
-    }
+    const v = snap.exists() ? snap.val() : {};
+    fiche = {
+      pieces: v.pieces || 0,
+      jours: v.jours || {},
+      xp: v.xp || 0,
+      stats: v.stats || {},
+      jeux: v.jeux || {}
+    };
     afficherNiveaux();
   } catch (err) {
     $("erreur").textContent = "Erreur : " + (err.code || "") + " " + err.message;
