@@ -26,3 +26,12 @@ import("./profil.js")
   .catch(function () {
     // la boutique n'est pas indispensable au reste du jeu
   });
+
+// Sur toutes les pages : cadeau de bienvenue à la première visite, puis contrôle de l'abonnement
+import("./abonnement.js")
+  .then(function (m) {
+    m.garde();
+  })
+  .catch(function () {
+    // l'abonnement n'est pas indispensable au reste du jeu
+  });
