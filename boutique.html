@@ -103,8 +103,18 @@
     font-size: 16px;
   }
   .texte span {
+    display: block;
     font-size: 12px;
     color: #aab4ff;
+  }
+  .groupe {
+    margin: 22px 0 0;
+    font-size: 15px;
+    color: #ffd54a;
+    text-align: center;
+  }
+  .apercu {
+    margin: 4px;
   }
   .carte button {
     flex: none;
@@ -155,7 +165,7 @@
   <div id="liste"></div>
 
   <p id="msg" class="message"></p>
-  <p class="message">Les articles sont décoratifs : ils ne donnent aucun avantage dans les questions. Les pièces ne s’achètent jamais avec de l’argent.</p>
+  <p class="message">Les articles sont décoratifs : ils ne donnent aucun avantage dans les questions. Les pièces ne s’achètent jamais avec de l’argent. Les titres ne s’achètent pas : ils se méritent, à retrouver dans ton profil.</p>
 
 </div>
 
@@ -175,7 +185,7 @@
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import { ref, get, set, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { CATEGORIES, ARTICLES, DEFAUTS, RARETES, memoriser } from "./profil.js";
+import { CATEGORIES, ARTICLES, DEFAUTS, RARETES, memoriser, remplirAvatar } from "./profil.js";
 import { Sons, animerCompteur } from "./sons.js";
 
 const $ = function (id) {
@@ -205,29 +215,29 @@ function apercu(a) {
   const d = document.createElement("div");
   d.className = "apercu";
   if (a.cat === "animal") {
-    const r = RARETES[a.rarete];
     const m = document.createElement("div");
     m.className = "mini";
-    m.textContent = a.emoji;
-    m.style.borderColor = r.couleur;
-    m.style.boxShadow = r.ombre;
+    remplirAvatar(m, a.id, null);
     d.appendChild(m);
-  } else if (a.cat === "theme") {
+  } else if (a.cat === "cadre") {
+    // le cadre est montré autour de l'avatar de départ
+    const m = document.createElement("div");
+    m.className = "mini";
+    remplirAvatar(m, DEFAUTS.animal, a.id);
+    d.appendChild(m);
+  } else {
     const m = document.createElement("div");
     m.className = "mini carre";
     m.style.background = "linear-gradient(" + a.haut + "," + a.milieu + "," + a.bas + ")";
     m.style.borderColor = a.bord;
     d.appendChild(m);
-  } else {
-    d.textContent = "🏅";
-    d.style.fontSize = "30px";
   }
   return d;
 }
 
 function detail(a) {
   const prix = estPossede(a) ? "Tu l’as" : a.prix + " pièces";
-  if (a.cat === "animal") return RARETES[a.rarete].nom + " · " + prix;
+  if (a.cat === "animal" || a.cat === "cadre") return RARETES[a.rarete].nom + " · " + prix;
   return prix;
 }
 
@@ -250,9 +260,18 @@ function afficherOnglets() {
 function afficherListe() {
   const zone = $("liste");
   zone.innerHTML = "";
+  let groupe = "";
   ARTICLES.filter(function (a) {
     return a.cat === onglet;
   }).forEach(function (a) {
+    if (a.groupe && a.groupe !== groupe) {
+      groupe = a.groupe;
+      const h = document.createElement("h3");
+      h.className = "groupe";
+      h.textContent = groupe === "Savants & Pionniers" ? "🔬 " + groupe : "🐾 " + groupe;
+      zone.appendChild(h);
+    }
+
     const carte = document.createElement("div");
     carte.className = "carte" + (estEquipe(a) ? " equipe" : "");
     carte.appendChild(apercu(a));
@@ -261,9 +280,14 @@ function afficherListe() {
     texte.className = "texte";
     const nom = document.createElement("b");
     nom.textContent = a.nom;
+    texte.appendChild(nom);
+    if (a.devise) {
+      const dv = document.createElement("span");
+      dv.textContent = "« " + a.devise + " »";
+      texte.appendChild(dv);
+    }
     const etat = document.createElement("span");
     etat.textContent = detail(a);
-    texte.appendChild(nom);
     texte.appendChild(etat);
     carte.appendChild(texte);
 
