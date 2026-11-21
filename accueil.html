@@ -34,6 +34,19 @@
     font-size: 14px;
     font-weight: 700;
   }
+  .alerte-compte {
+    display: block;
+    margin: 8px 0 0;
+    padding: 9px 10px;
+    border-radius: 12px;
+    border: 2px solid #ffd54a;
+    background: rgba(255, 213, 74, 0.12);
+    color: #ffe9a0;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 800;
+    text-decoration: none;
+  }
 </style>
 </head>
 <body>
@@ -47,6 +60,7 @@
   <p id="titre-joueur" class="xp"></p>
 
   <p id="bienvenue" class="bandeau-bienvenue" hidden></p>
+  <a id="alerte-compte" class="alerte-compte" href="compte.html" hidden>⚠️ Protège ton compte avec un e-mail pour ne pas perdre tes pièces</a>
 
   <div class="grade">
     <span id="badge-grade" class="badge">🛡️</span>
@@ -76,6 +90,7 @@
     <a id="lien-abonnes" class="btn jaune" href="abonnes.html" style="font-size: 16px; padding: 12px;" hidden>👥 Abonnés</a>
   </nav>
   <a class="lien-abo" href="abonnement.html">⭐ Abonnement</a>
+  <a class="lien-abo" href="compte.html" style="margin-top: 8px;">🔐 Mon compte</a>
   <p id="msg-test" class="message"></p>
   <div style="height: 80px;"></div>
 
@@ -96,7 +111,7 @@
 
 <script type="module">
 import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
-import { db } from "./firebase.js";
+import { db, authReel } from "./firebase.js";
 import { Sons, animerCompteur } from "./sons.js";
 import { aujourdhui, gradeDe, totalXp, calculerSerie, defiDuJour, progresDefi } from "./progression.js";
 import {
@@ -261,6 +276,10 @@ async function demarrer() {
     }
 
     await charger();
+    // Compte invité : on invite à le protéger (sinon tout est perdu en cas de réinstallation)
+    if (authReel.currentUser && authReel.currentUser.isAnonymous) {
+      $("alerte-compte").hidden = false;
+    }
     afficherAbonnement().catch(function () {
       // sans importance
     });
@@ -299,4 +318,4 @@ $("btn-test").addEventListener("click", async function () {
 demarrer();
 </script>
 </body>
-      </html>
+  </html>
