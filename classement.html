@@ -146,7 +146,7 @@ import {
   startAt
 } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { article, RARETES, DEFAUTS } from "./profil.js";
+import { article, DEFAUTS, remplirAvatar } from "./profil.js";
 import { gradeDe, totalXp } from "./progression.js";
 
 const $ = function (id) {
@@ -155,14 +155,22 @@ const $ = function (id) {
 
 let uid = null;
 
+function compter(snap) {
+  if (typeof snap.size === "number") return snap.size;
+  if (typeof snap.numChildren === "function") return snap.numChildren();
+  let n = 0;
+  snap.forEach(function () {
+    n++;
+  });
+  return n;
+}
+
 function nomDe(p, id) {
   return p.pseudo || "Joueur " + id.slice(-4).toUpperCase();
 }
 
 function ligne(rang, id, p) {
-  const animal = article(p.animal) || article(DEFAUTS.animal);
   const titre = article(p.titre) || article(DEFAUTS.titre);
-  const r = RARETES[animal.rarete];
   const xp = p.xp || 0;
   const g = gradeDe(xp);
 
@@ -175,9 +183,7 @@ function ligne(rang, id, p) {
 
   const mini = document.createElement("div");
   mini.className = "mini";
-  mini.textContent = animal.emoji;
-  mini.style.borderColor = r.couleur;
-  mini.style.boxShadow = r.ombre;
+  remplirAvatar(mini, p.animal, p.cadre);
 
   const texte = document.createElement("div");
   texte.className = "texte";
@@ -200,17 +206,6 @@ function ligne(rang, id, p) {
   div.appendChild(texte);
   div.appendChild(pts);
   return div;
-}
-
-// Nombre d'enfants d'un résultat (la propriété s'appelle size dans le SDK modulaire)
-function compter(snap) {
-  if (typeof snap.size === "number") return snap.size;
-  if (typeof snap.numChildren === "function") return snap.numChildren();
-  let n = 0;
-  snap.forEach(function () {
-    n++;
-  });
-  return n;
 }
 
 async function demarrer() {
@@ -272,4 +267,4 @@ async function demarrer() {
 demarrer();
 </script>
 </body>
-  </html>
+</html>
