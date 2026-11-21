@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Abonnés</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .retour {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900;
+  }
+  .alerte {
+    min-height: 18px;
+    margin: 10px 0 0;
+    text-align: center;
+    color: #ff8a80;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .bloc {
+    margin: 46px auto 0;
+  }
+  label {
+    display: block;
+    margin: 0 0 6px 4px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--texte-doux);
+  }
+  input[type="text"] {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-radius: 14px;
+    border: 3px solid var(--or);
+    background: #0b1250;
+    color: #fff;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .petit {
+    margin-top: 10px;
+    padding: 12px;
+    font-size: 16px;
+  }
+  .aide {
+    margin: 6px 0;
+    color: #cfd6ff;
+    font-size: 13px;
+    word-break: break-all;
+    white-space: pre-line;
+  }
+</style>
+</head>
+<body>
+<div class="ecran">
+
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <b>👥 Abonnés</b>
+    <span style="width: 62px;"></span>
+  </header>
+
+  <p id="alerte" class="alerte"></p>
+
+  <section class="popup bloc">
+    <div class="ruban">TROUVER UN JOUEUR</div>
+    <label for="cherche">Pseudo (ou identifiant complet)</label>
+    <input id="cherche" type="text" placeholder="Pseudo du joueur" autocomplete="off">
+    <button id="btn-chercher" class="btn bleu petit">🔍 Chercher</button>
+    <button id="btn-moi" class="btn bleu petit">Choisir mon propre compte</button>
+  </section>
+
+  <section id="bloc-cible" class="popup bloc" hidden>
+    <div class="ruban">ABONNEMENT</div>
+    <p id="cible" class="aide"></p>
+    <button id="btn-30" class="btn vert petit">➕ Activer 30 jours</button>
+    <button id="btn-90" class="btn vert petit">➕ Activer 90 jours</button>
+    <button id="btn-retirer" class="btn jaune petit">⛔ Retirer l’abonnement</button>
+  </section>
+
+  <p id="msg" class="message"></p>
+  <p class="message">Sert aux testeurs du test fermé. Une fois l’achat Google Play branché, les abonnements viendront de Google et non de cette page.</p>
+
+</div>
+
+<script>
+  window.addEventListener("error", function (e) {
+    var a = document.getElementById("alerte");
+    if (a) a.textContent = "Erreur : " + (e.message || "chargement impossible");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var a = document.getElementById("alerte");
+    var r = e.reason;
+    if (a) a.textContent = "Erreur : " + (r && r.message ? r.message : r);
+  });
+</script>
+
+<script type="module">
+import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { db } from "./firebase.js";
+import { connecter, dateLongue } from "./abonnement.js";
+
+const $ = function (id) {
+  return document.getElementById(id);
+};
+
+const JOUR_MS = 86400000;
+let monUid = null;
+let cible = null;
+let courant = null;
+
+function dire(texte) {
+  $("msg").textContent = texte;
+}
+
+function erreurDroits(e) {
+  if (e.code === "PERMISSION_DENIED") {
+    dire("Refusé : seul l’administrateur peut gérer les abonnements (voir la page Administration).");
+  } else {
+    dire("Opération impossible : " + (e.code || e.message));
+  }
+}
+
+function slugPseudo(texte) {
+  return texte.trim().toLowerCase().replace(/ /g, "_");
+}
+
+async function afficherCible() {
+  $("bloc-cible").hidden = false;
+  let nom = cible;
+  try {
+    const p = await get(ref(db, "profils/" + cible + "/pseudo"));
+    if (p.exists()) nom = p.val() + " (" + cible + ")";
+  } catch (e) {
+    // sans importance
+  }
+  const s = await get(ref(db, "abonnements/" + cible));
+  courant = s.exists() ? s.val() : null;
+  let etat = "Aucun abonnement enregistré.";
+  if (courant && courant.jusqua) {
+    etat =
+      courant.jusqua > Date.now()
+        ? "✅ Abonné jusqu’au " + dateLongue(courant.jusqua)
+        : "⏳ Abonnement terminé le " + dateLongue(courant.jusqua);
+  }
+  $("cible").textContent = nom + "\n" + etat;
+}
+
+async function chercher() {
+  const t = $("cherche").value.trim();
+  if (!t) return;
+  try {
+    if (/^[A-Za-z0-9]{20,}$/.test(t)) {
+      cible = t;
+    } else {
+      const s = await get(ref(db, "pseudos/" + slugPseudo(t)));
+      if (!s.exists()) {
+        dire("Aucun joueur avec ce pseudo.");
+        $("bloc-cible").hidden = true;
+        return;
+      }
+      cible = s.val();
+    }
+    dire("");
+    await afficherCible();
+  } catch (e) {
+    dire("Recherche impossible : " + (e.code || e.message));
+  }
+}
+
+async function activer(jours) {
+  if (!cible) return;
+  const base = Math.max(Date.now(), courant && courant.jusqua ? courant.jusqua : 0);
+  const maj = {};
+  maj["abonnements/" + cible] = { jusqua: base + jours * JOUR_MS, source: "manuel", maj: Date.now() };
+  try {
+    await update(ref(db), maj);
+    dire("✓ Abonnement activé (" + jours + " jours).");
+    await afficherCible();
+  } catch (e) {
+    erreurDroits(e);
+  }
+}
+
+async function retirer() {
+  if (!cible) return;
+  const maj = {};
+  maj["abonnements/" + cible] = null;
+  try {
+    await update(ref(db), maj);
+    dire("✓ Abonnement retiré.");
+    await afficherCible();
+  } catch (e) {
+    erreurDroits(e);
+  }
+}
+
+$("btn-chercher").addEventListener("click", chercher);
+$("btn-moi").addEventListener("click", async function () {
+  cible = monUid;
+  dire("");
+  try {
+    await afficherCible();
+  } catch (e) {
+    dire("Lecture impossible : " + (e.code || e.message));
+  }
+});
+$("btn-30").addEventListener("click", function () {
+  activer(30);
+});
+$("btn-90").addEventListener("click", function () {
+  activer(90);
+});
+$("btn-retirer").addEventListener("click", retirer);
+
+async function demarrer() {
+  try {
+    monUid = await connecter();
+  } catch (e) {
+    $("alerte").textContent = "Connexion impossible : " + (e.code || e.message);
+  }
+}
+
+demarrer();
+</script>
+</body>
+  </html>
