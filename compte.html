@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Mon compte</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .retour {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900;
+  }
+  .alerte {
+    min-height: 18px;
+    margin: 10px 0 0;
+    text-align: center;
+    color: #ff8a80;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .bloc {
+    margin: 46px auto 0;
+  }
+  label {
+    display: block;
+    margin: 0 0 6px 4px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--texte-doux);
+  }
+  input {
+    display: block;
+    width: 100%;
+    padding: 13px;
+    margin-bottom: 12px;
+    border-radius: 14px;
+    border: 3px solid var(--or);
+    background: #0b1250;
+    color: #fff;
+    font-family: inherit;
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .petit {
+    margin-top: 10px;
+    padding: 12px;
+    font-size: 16px;
+  }
+  .aide {
+    margin: 4px 0 10px;
+    color: #cfd6ff;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .etat {
+    margin: 4px 0 8px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 900;
+    color: #ffd54a;
+    word-break: break-all;
+  }
+  .lien-texte {
+    display: block;
+    margin: 12px auto 0;
+    padding: 6px;
+    border: 0;
+    background: none;
+    color: #aab4ff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+    text-align: center;
+  }
+  .danger {
+    border-color: #b03b4a;
+  }
+  .liens-legaux {
+    margin: 26px 0 0;
+    text-align: center;
+    font-size: 13px;
+  }
+  .liens-legaux a {
+    color: #aab4ff;
+    margin: 0 8px;
+  }
+</style>
+</head>
+<body>
+<div class="ecran">
+
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <b>🔐 Mon compte</b>
+    <span style="width: 62px;"></span>
+  </header>
+
+  <p id="alerte" class="alerte"></p>
+  <p id="msg" class="message"></p>
+
+  <!-- Compte invité : pas encore protégé -->
+  <section id="bloc-invite" class="popup bloc" hidden>
+    <div class="ruban">PROTÈGE TON COMPTE</div>
+    <p class="aide">Tu joues avec un compte invité. Si tu changes de téléphone ou si tu réinstalles l’application, tu perds tes pièces, ton XP et tes achats. Ajoute un e-mail et un mot de passe pour les garder.</p>
+    <label for="email-lier">Adresse e-mail</label>
+    <input id="email-lier" type="email" autocomplete="email" placeholder="ton.email@exemple.com">
+    <label for="mdp-lier">Mot de passe (8 caractères minimum)</label>
+    <input id="mdp-lier" type="password" autocomplete="new-password">
+    <label for="mdp-lier2">Répète le mot de passe</label>
+    <input id="mdp-lier2" type="password" autocomplete="new-password">
+    <button id="btn-lier" class="btn vert petit">🔒 Protéger mon compte</button>
+  </section>
+
+  <section id="bloc-connexion" class="popup bloc" hidden>
+    <div class="ruban">J’AI DÉJÀ UN COMPTE</div>
+    <p class="aide">Nouveau téléphone ou nouvelle installation : retrouve ton compte protégé.</p>
+    <label for="email-co">Adresse e-mail</label>
+    <input id="email-co" type="email" autocomplete="email">
+    <label for="mdp-co">Mot de passe</label>
+    <input id="mdp-co" type="password" autocomplete="current-password">
+    <button id="btn-connexion" class="btn bleu petit">Me connecter</button>
+    <button id="btn-oubli" class="lien-texte">Mot de passe oublié ?</button>
+  </section>
+
+  <!-- Compte protégé -->
+  <section id="bloc-protege" class="popup bloc" hidden>
+    <div class="ruban">TON COMPTE</div>
+    <p class="etat">✅ Compte protégé</p>
+    <p id="email-affiche" class="etat" style="font-size: 15px; color: #fff;"></p>
+    <p class="aide">Tes pièces, ton XP et tes achats te suivent sur tous tes téléphones.</p>
+    <button id="btn-changer-mdp" class="btn bleu petit">Changer mon mot de passe</button>
+    <button id="btn-deconnexion" class="btn jaune petit">Me déconnecter</button>
+  </section>
+
+  <section class="popup bloc">
+    <div class="ruban">SUPPRIMER MON COMPTE</div>
+    <p class="aide">Cette action est définitive : ton profil, ton pseudo, tes pièces, ton XP, tes achats, tes statistiques et ton abonnement enregistré sont effacés. Si tu es abonné via Google Play, résilie aussi l’abonnement dans Google Play.</p>
+    <label for="mdp-sup" id="label-mdp-sup" hidden>Ton mot de passe</label>
+    <input id="mdp-sup" type="password" autocomplete="current-password" hidden>
+    <label for="confirm-sup">Écris SUPPRIMER pour confirmer</label>
+    <input id="confirm-sup" type="text" autocomplete="off">
+    <button id="btn-supprimer" class="btn jaune petit danger">🗑️ Supprimer mon compte et mes données</button>
+  </section>
+
+  <p class="liens-legaux">
+    <a href="confidentialite.html">Confidentialité</a>
+    <a href="conditions.html">Conditions</a>
+    <a href="suppression.html">Suppression</a>
+  </p>
+  <div style="height: 70px;"></div>
+
+</div>
+
+<script>
+  window.addEventListener("error", function (e) {
+    var a = document.getElementById("alerte");
+    if (a) a.textContent = "Erreur : " + (e.message || "chargement impossible");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var a = document.getElementById("alerte");
+    var r = e.reason;
+    if (a) a.textContent = "Erreur : " + (r && r.message ? r.message : r);
+  });
+</script>
+
+<script type="module">
+import {
+  EmailAuthProvider,
+  linkWithCredential,
+  signInWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail,
+  sendEmailVerification,
+  deleteUser,
+  reauthenticateWithCredential
+} from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { authReel, db } from "./firebase.js";
+import { semaineIl } from "./progression.js";
+
+const $ = function (id) {
+  return document.getElementById(id);
+};
+
+function dire(texte) {
+  $("msg").textContent = texte;
+}
+
+function messageErreur(e) {
+  const c = e && e.code;
+  if (c === "auth/email-already-in-use" || c === "auth/credential-already-in-use") {
+    return "Cet e-mail a déjà un compte. Utilise « J’ai déjà un compte » plus bas.";
+  }
+  if (c === "auth/invalid-email") return "Adresse e-mail invalide.";
+  if (c === "auth/weak-password") return "Mot de passe trop faible : 8 caractères minimum.";
+  if (c === "auth/operation-not-allowed") {
+    return "La connexion par e-mail n’est pas activée dans Firebase (Authentication, puis Méthode de connexion).";
+  }
+  if (
+    c === "auth/invalid-credential" ||
+    c === "auth/wrong-password" ||
+    c === "auth/user-not-found" ||
+    c === "auth/invalid-login-credentials"
+  ) {
+    return "E-mail ou mot de passe incorrect.";
+  }
+  if (c === "auth/too-many-requests") return "Trop d’essais. Attends quelques minutes.";
+  if (c === "auth/network-request-failed") return "Pas de connexion internet.";
+  if (c === "auth/requires-recent-login") return "Pour ta sécurité, reconnecte-toi puis recommence.";
+  return "Erreur : " + (c || (e && e.message));
+}
+
+function afficherEtat() {
+  const u = authReel.currentUser;
+  const invite = !u || u.isAnonymous;
+  $("bloc-invite").hidden = !invite;
+  $("bloc-connexion").hidden = false;
+  $("bloc-protege").hidden = invite;
+  $("email-affiche").textContent = invite ? "" : u.email || "";
+  $("mdp-sup").hidden = invite;
+  $("label-mdp-sup").hidden = invite;
+}
+
+async function proteger() {
+  const email = $("email-lier").value.trim();
+  const mdp = $("mdp-lier").value;
+  if (mdp.length < 8) {
+    dire("Le mot de passe doit avoir au moins 8 caractères.");
+    return;
+  }
+  if (mdp !== $("mdp-lier2").value) {
+    dire("Les deux mots de passe ne sont pas identiques.");
+    return;
+  }
+  try {
+    const u = authReel.currentUser;
+    await linkWithCredential(u, EmailAuthProvider.credential(email, mdp));
+    try {
+      await sendEmailVerification(authReel.currentUser);
+      dire("✓ Compte protégé. Un e-mail de confirmation t’a été envoyé : vérifie qu’il est bien arrivé.");
+    } catch (e) {
+      dire("✓ Compte protégé.");
+    }
+    $("mdp-lier").value = "";
+    $("mdp-lier2").value = "";
+    afficherEtat();
+  } catch (e) {
+    dire(messageErreur(e));
+  }
+}
+
+async function seConnecter() {
+  const email = $("email-co").value.trim();
+  const mdp = $("mdp-co").value;
+  if (!email || !mdp) {
+    dire("Entre ton e-mail et ton mot de passe.");
+    return;
+  }
+  const u = authReel.currentUser;
+  if (u && u.isAnonymous) {
+    const ok = window.confirm(
+      "Tu vas quitter ce compte invité (pièces, XP, achats). S’il n’est pas protégé par un e-mail, il sera perdu. Continuer ?"
+    );
+    if (!ok) return;
+  }
+  try {
+    await signInWithEmailAndPassword(authReel, email, mdp);
+    dire("✓ Connecté. Chargement de ton compte…");
+    window.location.href = "accueil.html";
+  } catch (e) {
+    dire(messageErreur(e));
+  }
+}
+
+async function motDePasseOublie() {
+  const email = $("email-co").value.trim();
+  if (!email) {
+    dire("Écris d’abord ton e-mail dans la case ci-dessus.");
+    return;
+  }
+  try {
+    await sendPasswordResetEmail(authReel, email);
+    dire("Si cet e-mail a un compte, un message pour changer le mot de passe vient d’être envoyé.");
+  } catch (e) {
+    dire(messageErreur(e));
+  }
+}
+
+async function changerMotDePasse() {
+  const u = authReel.currentUser;
+  if (!u || !u.email) return;
+  try {
+    await sendPasswordResetEmail(authReel, u.email);
+    dire("Un message pour changer ton mot de passe a été envoyé à " + u.email + ".");
+  } catch (e) {
+    dire(messageErreur(e));
+  }
+}
+
+async function seDeconnecter() {
+  const ok = window.confirm("Te déconnecter ? Tu pourras retrouver ton compte avec ton e-mail et ton mot de passe.");
+  if (!ok) return;
+  try {
+    await signOut(authReel);
+    window.location.href = "accueil.html";
+  } catch (e) {
+    dire(messageErreur(e));
+  }
+}
+
+function cle(pseudo) {
+  return pseudo.toLowerCase().replace(/ /g, "_");
+}
+
+function oublierLesDonneesDeLAppareil() {
+  try {
+    Object.keys(localStorage).forEach(function (k) {
+      if (k.indexOf("ligue_") === 0) localStorage.removeItem(k);
+    });
+  } catch (e) {
+    // sans importance
+  }
+}
+
+async function supprimer() {
+  if ($("confirm-sup").value.trim().toUpperCase() !== "SUPPRIMER") {
+    dire("Écris SUPPRIMER pour confirmer.");
+    return;
+  }
+  const u = authReel.currentUser;
+  if (!u) return;
+  const uid = u.uid;
+
+  try {
+    // Un compte protégé doit prouver qui il est avant d'être supprimé
+    if (!u.isAnonymous) {
+      const mdp = $("mdp-sup").value;
+      if (!mdp) {
+        dire("Entre ton mot de passe pour confirmer.");
+        return;
+      }
+      await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, mdp));
+    }
+
+    if (!window.confirm("Dernière question : supprimer définitivement ton compte et tes données ?")) return;
+
+    // 1) Les données dans la base
+    const maj = {};
+    maj["joueurs/" + uid] = null;
+    maj["profils/" + uid] = null;
+    maj["reussites/" + uid] = null;
+    maj["abonnements/" + uid] = null;
+    const sp = await get(ref(db, "profils/" + uid + "/pseudo"));
+    if (sp.exists()) {
+      const k = cle(sp.val());
+      const sk = await get(ref(db, "pseudos/" + k));
+      if (sk.exists() && sk.val() === uid) maj["pseudos/" + k] = null;
+    }
+    for (let n = 0; n < 80; n++) maj["palmares/" + semaineIl(n) + "/" + uid] = null;
+    await update(ref(db), maj);
+
+    // 2) Le compte lui-même
+    let reste = "";
+    try {
+      await deleteUser(u);
+    } catch (e) {
+      reste = " (l’identifiant technique de ton compte invité n’est relié à plus aucune donnée)";
+    }
+
+    oublierLesDonneesDeLAppareil();
+    dire("✓ Ton compte et tes données ont été supprimés" + reste + ".");
+    $("bloc-invite").hidden = true;
+    $("bloc-connexion").hidden = true;
+    $("bloc-protege").hidden = true;
+    setTimeout(function () {
+      window.location.href = "accueil.html";
+    }, 3500);
+  } catch (e) {
+    dire(messageErreur(e));
+  }
+}
+
+$("btn-lier").addEventListener("click", proteger);
+$("btn-connexion").addEventListener("click", seConnecter);
+$("btn-oubli").addEventListener("click", motDePasseOublie);
+$("btn-changer-mdp").addEventListener("click", changerMotDePasse);
+$("btn-deconnexion").addEventListener("click", seDeconnecter);
+$("btn-supprimer").addEventListener("click", supprimer);
+
+afficherEtat();
+</script>
+</body>
+  </html>
