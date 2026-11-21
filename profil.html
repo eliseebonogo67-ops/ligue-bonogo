@@ -72,6 +72,66 @@
     font-size: 12px;
     text-align: center;
   }
+  .titre-carte {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 14px;
+    border: 2px solid var(--bord);
+    background: rgba(10, 18, 90, 0.75);
+  }
+  .titre-carte.porte {
+    border-color: #7be046;
+  }
+  .titre-carte.verrouille {
+    opacity: 0.8;
+  }
+  .titre-carte .corps {
+    flex: 1;
+    min-width: 0;
+  }
+  .titre-carte b {
+    display: block;
+    font-size: 15px;
+  }
+  .titre-carte span {
+    display: block;
+    font-size: 12px;
+    color: #aab4ff;
+  }
+  .barre {
+    height: 8px;
+    margin-top: 6px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+  }
+  .barre i {
+    display: block;
+    height: 100%;
+    background: linear-gradient(#ffd54a, #ffa800);
+  }
+  .titre-carte button {
+    flex: none;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 12px;
+    background: linear-gradient(#7be046, #2c9e12);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), 0 3px 0 #1b6a0a;
+    color: #fff;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .titre-carte button:disabled {
+    background: #3a3f66;
+    box-shadow: none;
+    color: #9aa0c8;
+    cursor: default;
+  }
   .liens {
     display: flex;
     flex-direction: column;
@@ -106,10 +166,16 @@
     <button id="btn-enregistrer" class="btn vert" style="font-size: 18px; padding: 14px;">Enregistrer</button>
   </section>
 
+  <section class="popup bloc">
+    <div class="ruban">MES TITRES</div>
+    <p class="aide">Les titres ne s’achètent pas : ils se méritent. Porte celui que tu as gagné.</p>
+    <div id="titres"></div>
+  </section>
+
   <p id="msg" class="message"></p>
 
   <div class="liens">
-    <a class="btn jaune" href="boutique.html" style="font-size: 17px; padding: 14px;">🛍️ Changer d’animal ou de titre</a>
+    <a class="btn jaune" href="boutique.html" style="font-size: 17px; padding: 14px;">🛍️ Boutique : avatars, cadres et thèmes</a>
     <a class="btn bleu" href="classement.html" style="font-size: 17px; padding: 14px;">🏅 Voir le classement</a>
   </div>
 
@@ -129,9 +195,10 @@
 
 <script type="module">
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { ref, get, set, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { gradeDe, totalXp } from "./progression.js";
+import { gradeDe, totalXp, evaluerTitres } from "./progression.js";
+import { memoriser, DEFAUTS } from "./profil.js";
 import { Sons } from "./sons.js";
 
 const $ = function (id) {
@@ -140,6 +207,52 @@ const $ = function (id) {
 
 let uid = null;
 let pseudoActuel = "";
+let joueur = {};
+let duelsPublics = {};
+
+// ===== Filtre des pseudos =====
+// Mots à ne jamais trouver dans un pseudo (même écrits avec des chiffres : m3rde, put4in…).
+// La liste n'est pas exhaustive : ajoute-y les mots que tu vois passer.
+const FRAGMENTS = [
+  "merde", "putain", "salope", "connard", "connasse", "encule", "niquer", "batard", "bordel",
+  "pedophile", "hitler", "terroriste", "fuck", "shit", "bitch", "asshole", "cunt",
+  "nigger", "nigga", "faggot", "whore", "porn",
+  "administrat", "moderat", "officiel", "bonogo"
+];
+// Mots courts : refusés seulement quand ils forment un mot entier (pour laisser passer « Monique », « Computer »…)
+const MOTS = [
+  "con", "cons", "cul", "bite", "zob", "pute", "putes", "pd", "pede", "fdp", "ntm", "tg",
+  "nique", "niquer", "sexe", "sex", "viol", "pedo", "slut", "rape", "dick", "kkk", "nazi", "admin"
+];
+
+function forme(texte) {
+  return texte
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/0/g, "o")
+    .replace(/1/g, "i")
+    .replace(/3/g, "e")
+    .replace(/4/g, "a")
+    .replace(/5/g, "s")
+    .replace(/7/g, "t");
+}
+
+// Renvoie la raison du refus, ou "" si le pseudo est correct
+function pseudoInterdit(texte) {
+  const f = forme(texte);
+  const colle = f.replace(/[^a-z]/g, "");
+  for (let i = 0; i < FRAGMENTS.length; i++) {
+    if (colle.indexOf(FRAGMENTS[i]) !== -1) return "Ce pseudo n’est pas autorisé.";
+  }
+  const mots = f.split(/[^a-z]+/).filter(function (m) {
+    return m.length > 0;
+  });
+  for (let j = 0; j < mots.length; j++) {
+    if (MOTS.indexOf(mots[j]) !== -1) return "Ce pseudo n’est pas autorisé.";
+  }
+  return "";
+}
 
 function dire(texte) {
   $("msg").textContent = texte;
@@ -170,6 +283,12 @@ async function enregistrer() {
     dire("C’est déjà ton pseudo.");
     return;
   }
+  const refus = pseudoInterdit(nouveau);
+  if (refus) {
+    Sons.faux();
+    dire(refus + " Choisis-en un autre.");
+    return;
+  }
 
   const kNouveau = cle(nouveau);
   const kAncien = pseudoActuel ? cle(pseudoActuel) : null;
@@ -194,6 +313,93 @@ async function enregistrer() {
   }
 }
 
+function porte() {
+  return (joueur.equipe && joueur.equipe.titre) || DEFAUTS.titre;
+}
+
+function afficherTitres() {
+  const zone = $("titres");
+  zone.innerHTML = "";
+  const liste = evaluerTitres(joueur, duelsPublics);
+  liste.forEach(function (t) {
+    const gagne =
+      t.id === "titre_recrue" ||
+      t.merite ||
+      !!(joueur.titres && joueur.titres[t.id]) ||
+      !!(joueur.boutique && joueur.boutique[t.id]);
+    const actuel = porte() === t.id;
+
+    const carte = document.createElement("div");
+    carte.className = "titre-carte" + (actuel ? " porte" : "") + (gagne ? "" : " verrouille");
+
+    const corps = document.createElement("div");
+    corps.className = "corps";
+    const nom = document.createElement("b");
+    nom.textContent = (gagne ? "" : "🔒 ") + t.texte;
+    const desc = document.createElement("span");
+    desc.textContent = t.desc;
+    corps.appendChild(nom);
+    corps.appendChild(desc);
+    if (!gagne && t.cible > 0) {
+      const info = document.createElement("span");
+      info.textContent = t.valeur + " / " + t.cible;
+      corps.appendChild(info);
+      const barre = document.createElement("div");
+      barre.className = "barre";
+      const rempli = document.createElement("i");
+      rempli.style.width = Math.round((t.valeur / t.cible) * 100) + "%";
+      barre.appendChild(rempli);
+      corps.appendChild(barre);
+    }
+    carte.appendChild(corps);
+
+    const b = document.createElement("button");
+    if (actuel) {
+      b.textContent = "Porté ✓";
+      b.disabled = true;
+    } else if (gagne) {
+      b.textContent = "Porter";
+      b.addEventListener("click", function () {
+        porterTitre(t);
+      });
+    } else {
+      b.textContent = "À gagner";
+      b.disabled = true;
+    }
+    carte.appendChild(b);
+    zone.appendChild(carte);
+  });
+}
+
+// Écrit une fois pour toutes les titres déjà mérités (c'est ce que vérifie la base de données)
+async function enregistrerTitres() {
+  const maj = {};
+  evaluerTitres(joueur, duelsPublics).forEach(function (t) {
+    if (t.merite && t.id !== "titre_recrue" && !(joueur.titres && joueur.titres[t.id])) {
+      maj["joueurs/" + uid + "/titres/" + t.id] = true;
+      joueur.titres = joueur.titres || {};
+      joueur.titres[t.id] = true;
+    }
+  });
+  if (Object.keys(maj).length > 0) await update(ref(db), maj);
+}
+
+async function porterTitre(t) {
+  try {
+    await enregistrerTitres();
+    await set(ref(db, "joueurs/" + uid + "/equipe/titre"), t.id);
+    joueur.equipe = joueur.equipe || {};
+    joueur.equipe.titre = t.id;
+    memoriser(joueur.equipe);
+    Sons.bon();
+    dire("Titre porté : " + t.texte);
+    afficherTitres();
+  } catch (e) {
+    Sons.faux();
+    dire("Impossible de porter ce titre : " + (e.code || e.message));
+  }
+}
+
 async function demarrer() {
   try {
     const cred = await signInAnonymously(auth);
@@ -210,9 +416,19 @@ async function demarrer() {
     $("pseudo").value = pseudoActuel;
     $("nom").textContent = pseudoActuel || "Choisis ton pseudo";
 
+    joueur = v;
+    duelsPublics = p.duels || {};
+
     const xp = totalXp(v);
     const g = gradeDe(xp);
     $("grade").textContent = g.grade.emoji + " " + g.grade.nom + " · " + xp + " XP";
+
+    try {
+      await enregistrerTitres();
+    } catch (e) {
+      // les titres se débloqueront à la prochaine ouverture
+    }
+    afficherTitres();
   } catch (e) {
     $("alerte").textContent = "Connexion impossible : " + (e.code || e.message);
   }
