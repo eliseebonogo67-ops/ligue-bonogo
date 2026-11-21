@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Abonnement</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .retour {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900;
+  }
+  .alerte {
+    min-height: 18px;
+    margin: 10px 0 0;
+    text-align: center;
+    color: #ff8a80;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .bloc {
+    margin: 46px auto 0;
+  }
+  .etat {
+    margin: 4px 0 6px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 900;
+    color: #ffd54a;
+  }
+  .detail {
+    margin: 0 0 4px;
+    text-align: center;
+    color: #cfd6ff;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .prix {
+    margin: 4px 0 10px;
+    text-align: center;
+    font-size: 34px;
+    font-weight: 900;
+    color: #ffd54a;
+  }
+  .prix small {
+    font-size: 15px;
+    color: #cfd6ff;
+    font-weight: 700;
+  }
+  .avantages {
+    margin: 0 0 12px;
+    padding: 0;
+    list-style: none;
+    font-size: 15px;
+    line-height: 1.9;
+  }
+  .petit {
+    margin-top: 12px;
+    padding: 12px;
+    font-size: 16px;
+  }
+  .lien-gerer {
+    display: block;
+    margin: 14px auto 0;
+    text-align: center;
+    color: #aab4ff;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .mentions {
+    margin: 14px 4px 0;
+    color: #8f9ae0;
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="ecran">
+
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <b>⭐ Abonnement</b>
+    <span style="width: 62px;"></span>
+  </header>
+
+  <p id="alerte" class="alerte"></p>
+
+  <section class="popup bloc">
+    <div class="ruban">TON ACCÈS</div>
+    <p id="etat" class="etat">Chargement…</p>
+    <p id="detail" class="detail"></p>
+    <a id="btn-retour" class="btn vert petit" href="accueil.html" hidden>Continuer</a>
+  </section>
+
+  <section class="popup bloc">
+    <div class="ruban">L’ABONNEMENT</div>
+    <p class="prix"><span id="prix">1 000</span> FCFA <small>par mois</small></p>
+    <ul class="avantages">
+      <li>📚 Entraînement BEPC et Bac, avec explications</li>
+      <li>🏆 Compétitions entre élèves</li>
+      <li>⚔️ Défis entre amis, revanches et bilans</li>
+      <li>🎖️ Classements, titres et boutique</li>
+    </ul>
+    <button id="btn-abonner" class="btn jaune petit">S’abonner</button>
+    <button id="btn-restaurer" class="btn bleu petit">Restaurer mon abonnement</button>
+    <a class="lien-gerer" href="https://play.google.com/store/account/subscriptions">Gérer ou résilier mon abonnement</a>
+    <p id="msg" class="message"></p>
+    <p class="mentions">
+      Après l’essai gratuit de 7 jours, l’abonnement coûte 1 000 FCFA par mois et peut être résilié à tout moment dans Google Play.
+      Les pièces de la ligue sont virtuelles : elles ne s’achètent pas et ne se convertissent jamais en argent.
+    </p>
+  </section>
+
+</div>
+
+<script>
+  window.addEventListener("error", function (e) {
+    var a = document.getElementById("alerte");
+    if (a) a.textContent = "Erreur : " + (e.message || "chargement impossible");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var a = document.getElementById("alerte");
+    var r = e.reason;
+    if (a) a.textContent = "Erreur : " + (r && r.message ? r.message : r);
+  });
+</script>
+
+<script type="module">
+import {
+  connecter,
+  assurerCompte,
+  lireStatut,
+  dateLongue,
+  ABONNEMENT_ACTIF,
+  PAIEMENT_DISPONIBLE,
+  PRIX_FCFA,
+  ESSAI_JOURS
+} from "./abonnement.js";
+
+const $ = function (id) {
+  return document.getElementById(id);
+};
+
+let uid = null;
+
+function pluriel(n, mot) {
+  return n + " " + mot + (n > 1 ? "s" : "");
+}
+
+async function afficher() {
+  const s = await lireStatut(uid);
+  $("prix").textContent = String(PRIX_FCFA).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+
+  let etat;
+  let detail = "";
+  if (s.phase === "abonne") {
+    etat = "✅ Abonné";
+    detail = "Ton abonnement est actif jusqu’au " + dateLongue(s.jusqua) + ".";
+    $("btn-abonner").hidden = true;
+  } else if (s.phase === "essai") {
+    etat = "🎁 Essai gratuit";
+    detail = pluriel(s.joursRestants, "jour") + " restant" + (s.joursRestants > 1 ? "s" : "") + " (jusqu’au " + dateLongue(s.finEssai) + "). Profite de tout le jeu gratuitement.";
+    $("btn-abonner").hidden = false;
+  } else {
+    etat = "⏳ Essai terminé";
+    detail = "Tes " + ESSAI_JOURS + " jours d’essai gratuit sont passés. Abonne-toi pour continuer à jouer.";
+    $("btn-abonner").hidden = false;
+  }
+  if (s.libre) {
+    detail += "\n🧪 Version de test : l’abonnement n’est pas encore activé, tout est ouvert.";
+  }
+  $("etat").textContent = etat;
+  $("detail").textContent = detail;
+  $("detail").style.whiteSpace = "pre-line";
+
+  // Retour vers la page qui demandait l'accès, si on a de nouveau le droit d'y aller
+  const retour = new URLSearchParams(window.location.search).get("retour");
+  if (s.acces && retour && /^[a-z0-9_]+\.html$/.test(retour)) {
+    $("btn-retour").href = retour;
+    $("btn-retour").hidden = false;
+  }
+}
+
+$("btn-abonner").addEventListener("click", function () {
+  if (!ABONNEMENT_ACTIF || !PAIEMENT_DISPONIBLE) {
+    $("msg").textContent =
+      "Le paiement par Google Play sera disponible dans la version de l’application publiée sur le Play Store.";
+    return;
+  }
+  // À brancher : lancer l'achat Google Play (module d'achats intégrés de Median),
+  // puis laisser le serveur écrire abonnements/{uid} après vérification du reçu.
+  $("msg").textContent = "Paiement en cours de préparation…";
+});
+
+$("btn-restaurer").addEventListener("click", async function () {
+  $("msg").textContent = "Vérification…";
+  try {
+    await afficher();
+    $("msg").textContent = "Abonnement vérifié.";
+  } catch (e) {
+    $("msg").textContent = "Vérification impossible : " + (e.code || e.message);
+  }
+});
+
+async function demarrer() {
+  try {
+    uid = await connecter();
+    await assurerCompte(uid);
+    await afficher();
+  } catch (e) {
+    $("alerte").textContent = "Connexion impossible : " + (e.code || e.message);
+    $("etat").textContent = "";
+  }
+}
+
+demarrer();
+</script>
+</body>
+</html>
