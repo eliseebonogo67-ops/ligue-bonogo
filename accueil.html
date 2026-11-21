@@ -6,6 +6,35 @@
 <meta name="theme-color" content="#0b1250">
 <title>Ligue Bonogo - Accueil</title>
 <link rel="stylesheet" href="theme.css">
+<style>
+  .bandeau-bienvenue {
+    margin: 10px 0 0;
+    padding: 10px;
+    border-radius: 14px;
+    background: linear-gradient(#ffd54a, #ffa800);
+    color: #5a3a00;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 900;
+  }
+  .abo-etat {
+    display: block;
+    margin: 6px auto 0;
+    text-align: center;
+    color: #ffd54a;
+    font-size: 13px;
+    font-weight: 800;
+    text-decoration: none;
+  }
+  .lien-abo {
+    display: block;
+    margin: 18px auto 0;
+    text-align: center;
+    color: #aab4ff;
+    font-size: 14px;
+    font-weight: 700;
+  }
+</style>
 </head>
 <body>
 <div class="ecran">
@@ -17,6 +46,8 @@
   </header>
   <p id="titre-joueur" class="xp"></p>
 
+  <p id="bienvenue" class="bandeau-bienvenue" hidden></p>
+
   <div class="grade">
     <span id="badge-grade" class="badge">🛡️</span>
     <div class="jauge"><div id="jauge-plein" class="jauge-plein" style="width: 0%;"></div></div>
@@ -24,6 +55,7 @@
   </div>
   <p id="xp-texte" class="xp">…</p>
   <p id="serie-jours" class="xp"></p>
+  <a id="abo-etat" class="abo-etat" href="abonnement.html" hidden></a>
 
   <div class="rangee">
     <div class="lib"><a class="icone" href="boutique.html" style="display: grid; place-items: center; text-decoration: none;">🛍️</a>Boutique</div>
@@ -39,9 +71,11 @@
     <a class="btn bleu" href="defi.html"><span class="ic">⚔️</span>Défier un ami</a>
     <a class="btn bleu" href="duels.html" style="font-size: 18px; padding: 14px;"><span class="ic">📜</span>Mes duels</a>
     <a class="btn vert" href="entrainement.html"><span class="ic">📚</span>Entraînement</a>
-    <button id="btn-test" class="btn bleu" style="font-size: 16px; padding: 12px;">🎁 +50 pièces (test)</button>
+    <button id="btn-test" class="btn bleu" style="font-size: 16px; padding: 12px;" hidden>🎁 +50 pièces (test)</button>
     <a id="lien-admin" class="btn jaune" href="admin.html" style="font-size: 16px; padding: 12px;" hidden>🔧 Administration</a>
+    <a id="lien-abonnes" class="btn jaune" href="abonnes.html" style="font-size: 16px; padding: 12px;" hidden>👥 Abonnés</a>
   </nav>
+  <a class="lien-abo" href="abonnement.html">⭐ Abonnement</a>
   <p id="msg-test" class="message"></p>
   <div style="height: 80px;"></div>
 
@@ -61,11 +95,19 @@
 </div>
 
 <script type="module">
-import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import { ref, get, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
-import { auth, db } from "./firebase.js";
+import { db } from "./firebase.js";
 import { Sons, animerCompteur } from "./sons.js";
 import { aujourdhui, gradeDe, totalXp, calculerSerie, defiDuJour, progresDefi } from "./progression.js";
+import {
+  connecter,
+  assurerCompte,
+  lireStatut,
+  dateLongue,
+  ABONNEMENT_ACTIF,
+  CADEAU_PIECES,
+  ESSAI_JOURS
+} from "./abonnement.js";
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -74,13 +116,20 @@ const $ = function (id) {
 let uid = null;
 let v = {};
 
-// Administration : ouvre accueil.html?admin=1 pour l'afficher (?admin=0 pour la cacher),
+// Mode administrateur (boutons Administration, Abonnés et test) : visible seulement sur ton téléphone.
+// Ouvre accueil.html?admin=1 pour l'activer (?admin=0 pour le couper),
 // ou appuie 5 fois vite sur la ligne d'XP (marche aussi dans l'application).
+function majAdmin(actif) {
+  $("lien-admin").hidden = !actif;
+  $("lien-abonnes").hidden = !actif;
+  $("btn-test").hidden = !actif;
+}
+
 try {
   const params = new URLSearchParams(window.location.search);
   if (params.get("admin") === "1") localStorage.setItem("ligue_admin", "1");
   if (params.get("admin") === "0") localStorage.removeItem("ligue_admin");
-  if (localStorage.getItem("ligue_admin") === "1") $("lien-admin").hidden = false;
+  majAdmin(localStorage.getItem("ligue_admin") === "1");
 } catch (e) {
   // sans importance
 }
@@ -96,11 +145,11 @@ $("xp-texte").addEventListener("click", function () {
   try {
     if (localStorage.getItem("ligue_admin") === "1") {
       localStorage.removeItem("ligue_admin");
-      $("lien-admin").hidden = true;
+      majAdmin(false);
       $("msg-test").textContent = "Mode administrateur désactivé.";
     } else {
       localStorage.setItem("ligue_admin", "1");
-      $("lien-admin").hidden = false;
+      majAdmin(true);
       $("msg-test").textContent = "Mode administrateur activé.";
     }
   } catch (e) {
@@ -154,6 +203,21 @@ function afficherDefi() {
   $("point-defi").hidden = reclame;
 }
 
+// L'état de l'abonnement n'est affiché qu'une fois l'abonnement activé pour le public
+async function afficherAbonnement() {
+  if (!ABONNEMENT_ACTIF) return;
+  const s = await lireStatut(uid);
+  const a = $("abo-etat");
+  if (s.phase === "essai") {
+    a.textContent = "🎁 Essai gratuit : " + s.joursRestants + " jour" + (s.joursRestants > 1 ? "s" : "") + " restant" + (s.joursRestants > 1 ? "s" : "");
+  } else if (s.phase === "abonne") {
+    a.textContent = "✅ Abonné jusqu’au " + dateLongue(s.jusqua);
+  } else {
+    a.textContent = "⏳ Essai terminé · touche ici pour t’abonner";
+  }
+  a.hidden = false;
+}
+
 async function charger() {
   const snap = await get(ref(db, "joueurs/" + uid));
   v = snap.exists() ? snap.val() : {};
@@ -185,9 +249,21 @@ async function reclamer() {
 
 async function demarrer() {
   try {
-    const cred = await signInAnonymously(auth);
-    uid = cred.user.uid;
+    uid = await connecter();
+
+    // Première visite : 50 pièces offertes (et début de l'essai gratuit)
+    const compte = await assurerCompte(uid);
+    if (compte.nouveau) {
+      $("bienvenue").textContent =
+        "🎁 Bienvenue ! " + CADEAU_PIECES + " pièces offertes" +
+        (ABONNEMENT_ACTIF ? " et " + ESSAI_JOURS + " jours d’essai gratuit." : ".");
+      $("bienvenue").hidden = false;
+    }
+
     await charger();
+    afficherAbonnement().catch(function () {
+      // sans importance
+    });
   } catch (e) {
     $("solde").textContent = "?";
     $("msg-test").textContent = "Erreur : " + (e.code || e.message);
@@ -204,21 +280,14 @@ $("fermer-defi").addEventListener("click", function () {
 });
 $("btn-reclamer").addEventListener("click", reclamer);
 
+// Bouton de test (visible seulement en mode administrateur)
 $("btn-test").addEventListener("click", async function () {
   if (!uid) return;
   try {
-    const base = "joueurs/" + uid + "/";
-    const snap = await get(ref(db, base + "pieces"));
-    if (!snap.exists()) {
-      const m1 = {};
-      m1[base + "pieces"] = 0;
-      m1[base + "creeLe"] = Date.now();
-      await update(ref(db), m1);
-    }
-    const actuel = snap.exists() ? snap.val() : 0;
-    const m2 = {};
-    m2[base + "pieces"] = actuel + 50;
-    await update(ref(db), m2);
+    const actuel = v.pieces || 0;
+    const maj = {};
+    maj["joueurs/" + uid + "/pieces"] = actuel + 50;
+    await update(ref(db), maj);
     v.pieces = actuel + 50;
     animerCompteur($("solde"), actuel, actuel + 50, 1000);
     $("msg-test").textContent = "+50 pièces de test ajoutées.";
