@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Vérification avant publication</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .retour {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900;
+  }
+  .bilan {
+    margin: 18px 0 8px;
+    padding: 14px;
+    border-radius: 16px;
+    border: 2px solid #ffd54a;
+    background: rgba(240, 180, 0, 0.12);
+    text-align: center;
+    font-size: 17px;
+    font-weight: 900;
+  }
+  .titre-groupe {
+    margin: 22px 0 4px;
+    font-size: 15px;
+    color: #ffd54a;
+  }
+  .ligne {
+    display: flex;
+    gap: 10px;
+    margin: 6px 0;
+    padding: 9px 10px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.07);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .ligne .ic {
+    flex: none;
+    width: 22px;
+  }
+  .ligne small {
+    display: block;
+    color: #aab4ff;
+  }
+  .ligne.ko {
+    background: rgba(255, 80, 70, 0.18);
+  }
+  .ligne.avert {
+    background: rgba(255, 190, 40, 0.15);
+  }
+  .petit {
+    margin-top: 18px;
+    padding: 12px;
+    font-size: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="ecran">
+
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <b>✅ Vérification</b>
+    <span style="width: 62px;"></span>
+  </header>
+
+  <p id="bilan" class="bilan">Vérification en cours…</p>
+  <div id="liste"></div>
+  <button id="btn-relancer" class="btn bleu petit">↻ Relancer la vérification</button>
+  <p class="message">Cette page ne modifie rien : elle lit et teste. Garde-la pour la refaire avant chaque mise à jour importante.</p>
+  <div style="height: 70px;"></div>
+
+</div>
+
+<script type="module">
+import { ref, get, set } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { db, authReel } from "./firebase.js";
+import {
+  connecter,
+  lireStatut,
+  dateLongue,
+  ABONNEMENT_ACTIF,
+  PAIEMENT_DISPONIBLE,
+  LANCEMENT_MS,
+  ESSAI_JOURS,
+  PRIX_FCFA,
+  CADEAU_PIECES
+} from "./abonnement.js";
+import { ROUNDS, questionsPlates } from "./rounds.js";
+import { NIVEAUX } from "./matieres.js";
+
+const $ = function (id) {
+  return document.getElementById(id);
+};
+
+const PAGES = [
+  "index.html", "accueil.html", "entrainement.html", "salon.html", "partie.html", "defi.html",
+  "duel.html", "duels.html", "boutique.html", "profil.html", "classement.html", "palmares.html",
+  "admin.html", "abonnement.html", "abonnes.html", "compte.html",
+  "confidentialite.html", "conditions.html", "suppression.html"
+];
+const SCRIPTS = [
+  "firebase.js", "rounds.js", "matieres.js", "outils.js", "formats.js", "cycles.js", "horloge.js",
+  "sons.js", "progression.js", "profil.js", "abonnement.js", "signalement.js", "script.js",
+  "salon.js", "partie.js", "partiemoteur.js", "duel.js"
+];
+const STYLES = ["theme.css", "competition.css", "duel.css"];
+const IMAGES = [
+  "av_edison.png", "av_darwin.png", "av_diop.png", "av_galilee.png", "av_newton.png",
+  "av_einstein.png", "av_hampate.png", "av_curie.png", "av_imhotep.png", "av_sankara.png"
+];
+const A_SUPPRIMER = [
+  "acceuil.html", "entraînement.html", "compétition.css", "défi.html", "ligue.html", "ligue.css",
+  "ligue.js", "moteur.js", "duel-test.html", "defi.js", "duelmoteur.js", "style.css"
+];
+
+let lignes = [];
+
+function ajouter(groupe, etat, texte, detail) {
+  lignes.push({ groupe: groupe, etat: etat, texte: texte, detail: detail || "" });
+}
+
+async function existe(nom) {
+  try {
+    const r = await fetch(encodeURI(nom) + "?v=" + Date.now(), { cache: "no-store" });
+    return r.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function texteDe(nom) {
+  try {
+    const r = await fetch(encodeURI(nom) + "?v=" + Date.now(), { cache: "no-store" });
+    return r.ok ? await r.text() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function refuse(promesse) {
+  try {
+    await promesse;
+    return false;
+  } catch (e) {
+    return e && (e.code === "PERMISSION_DENIED" || /permission/i.test(e.message || ""));
+  }
+}
+
+async function verifierFichiers() {
+  const tous = PAGES.concat(SCRIPTS, STYLES, IMAGES);
+  const res = await Promise.all(tous.map(existe));
+  const manquants = tous.filter(function (n, i) {
+    return !res[i];
+  });
+  if (manquants.length === 0) {
+    ajouter("Fichiers du site", "ok", tous.length + " fichiers présents (pages, scripts, styles, 10 avatars)");
+  } else {
+    ajouter("Fichiers du site", "ko", manquants.length + " fichier(s) manquant(s)", manquants.join(", "));
+  }
+
+  const inutiles = await Promise.all(A_SUPPRIMER.map(existe));
+  const trouves = A_SUPPRIMER.filter(function (n, i) {
+    return inutiles[i];
+  });
+  if (trouves.length === 0) ajouter("Fichiers du site", "ok", "Aucun ancien fichier ni nom fautif");
+  else ajouter("Fichiers du site", "avert", "Anciens fichiers à supprimer du dépôt", trouves.join(", "));
+}
+
+async function verifierPagesLegales() {
+  const pages = ["confidentialite.html", "conditions.html", "suppression.html"];
+  const aCompleter = [];
+  for (let i = 0; i < pages.length; i++) {
+    const t = await texteDe(pages[i]);
+    if (t === null) continue;
+    if (/\[(NOM DE L.ÉDITEUR|VILLE|ADRESSE E-MAIL DE CONTACT)\]/.test(t)) aCompleter.push(pages[i]);
+  }
+  if (aCompleter.length === 0) ajouter("Pages légales", "ok", "Les 3 pages sont complétées (plus aucun texte entre crochets)");
+  else ajouter("Pages légales", "ko", "Il reste des mentions entre crochets à compléter", aCompleter.join(", "));
+}
+
+function verifierReglages() {
+  ajouter(
+    "Réglages de l'abonnement",
+    "ok",
+    PRIX_FCFA + " FCFA par mois · essai " + ESSAI_JOURS + " jours · cadeau " + CADEAU_PIECES + " pièces",
+    "Départ de l'abonnement : " + dateLongue(LANCEMENT_MS)
+  );
+  if (!ABONNEMENT_ACTIF) {
+    ajouter(
+      "Réglages de l'abonnement",
+      "avert",
+      "Abonnement non activé : tout est gratuit",
+      "Normal pendant le test fermé. À activer seulement quand le paiement Google Play fonctionne."
+    );
+  } else if (!PAIEMENT_DISPONIBLE) {
+    ajouter(
+      "Réglages de l'abonnement",
+      "ko",
+      "Abonnement activé mais paiement non branché",
+      "Après l'essai, les joueurs seraient bloqués sans pouvoir payer. Acceptable seulement si tu actives tes testeurs à la main."
+    );
+  } else {
+    ajouter("Réglages de l'abonnement", "ok", "Abonnement activé et paiement branché");
+  }
+}
+
+async function verifierFirebase() {
+  let uid = null;
+  try {
+    uid = await connecter();
+    ajouter("Connexion et compte", "ok", "Connexion à Firebase réussie");
+  } catch (e) {
+    ajouter("Connexion et compte", "ko", "Connexion à Firebase impossible", e.code || e.message);
+    return null;
+  }
+
+  const u = authReel.currentUser;
+  if (u && !u.isAnonymous) ajouter("Connexion et compte", "ok", "Ton compte est protégé par e-mail");
+  else ajouter("Connexion et compte", "avert", "Ton compte est un compte invité", "Protège-le (Mon compte), surtout si c'est ton compte administrateur.");
+
+  try {
+    const s = await lireStatut(uid);
+    const libelle = s.phase === "abonne" ? "abonné" : s.phase === "essai" ? "essai gratuit (" + s.joursRestants + " j)" : "essai terminé";
+    ajouter("Connexion et compte", "ok", "État de ton accès : " + libelle);
+  } catch (e) {
+    ajouter("Connexion et compte", "avert", "État de l'abonnement illisible", e.code || e.message);
+  }
+  return uid;
+}
+
+async function verifierCatalogue() {
+  const reelles = ROUNDS.filter(function (r) {
+    return r.id.indexOf("test_") !== 0;
+  });
+  if (reelles.length === 0) {
+    ajouter("Questions", "ko", "Il n'y a que les séries d'exemple", "Importe tes vraies questions avec la page Administration.");
+    return;
+  }
+  ajouter("Questions", "ok", reelles.length + " série(s) importée(s)");
+
+  const nonClassees = reelles.filter(function (r) {
+    return !r.niveau || !r.matiere;
+  });
+  if (nonClassees.length > 0) {
+    ajouter("Questions", "avert", nonClassees.length + " série(s) non classée(s) : invisibles à l'entraînement", "Classe-les dans Administration, puis Catalogue.");
+  }
+
+  NIVEAUX.forEach(function (n) {
+    const nb = questionsPlates(n.id, null).length;
+    if (nb === 0) ajouter("Questions", "ko", n.nom + " : aucune question");
+    else if (nb < 100) ajouter("Questions", "avert", n.nom + " : " + nb + " questions", "Peu pour une sortie publique : vise plusieurs centaines par niveau.");
+    else ajouter("Questions", "ok", n.nom + " : " + nb + " questions");
+  });
+}
+
+async function verifierRegles(uid) {
+  const tests = [
+    {
+      nom: "Lecture du compte d'un autre joueur",
+      action: get(ref(db, "joueurs/ZZZ_AUTRE_JOUEUR_TEST"))
+    },
+    {
+      nom: "Lecture de toute la base",
+      action: get(ref(db))
+    },
+    {
+      nom: "Écriture hors des zones prévues",
+      action: set(ref(db, "verification_test/essai"), 1)
+    }
+  ];
+  for (let i = 0; i < tests.length; i++) {
+    const ok = await refuse(tests[i].action);
+    if (ok) ajouter("Sécurité de la base", "ok", tests[i].nom + " : refusée comme prévu");
+    else ajouter("Sécurité de la base", "ko", tests[i].nom + " : AUTORISÉE", "Les règles Firebase sont trop ouvertes : publie les règles de la dernière partie.");
+  }
+
+  // Sommes-nous administrateur sur cet appareil ?
+  const estAdmin = !(await refuse(get(ref(db, "signalements"))));
+  ajouter(
+    "Sécurité de la base",
+    estAdmin ? "ok" : "avert",
+    estAdmin ? "Cet appareil est administrateur" : "Cet appareil n'est pas administrateur",
+    estAdmin ? "" : "Normal pour un joueur. Pour toi : ouvre Administration puis « Devenir administrateur »."
+  );
+}
+
+async function verifierSalles() {
+  try {
+    const attendu = { a: 100, b: 50, c: 25 };
+    const s = await get(ref(db, "salles"));
+    const v = s.exists() ? s.val() : {};
+    const anciennes = [];
+    let vues = 0;
+    for (const f of ["a", "b", "c"]) {
+      const id = v[f] && v[f].courant;
+      if (!id) continue;
+      const m = await get(ref(db, "salons/" + id + "/max"));
+      vues++;
+      if (m.exists() && m.val() !== attendu[f]) anciennes.push("salle " + f + " (" + m.val() + " places)");
+    }
+    if (anciennes.length > 0) {
+      ajouter("Compétitions", "avert", "Anciennes salles encore en cours", anciennes.join(", ") + ". Dans la console Firebase, supprime les nœuds salles, salons et parties.");
+    } else {
+      ajouter("Compétitions", "ok", vues > 0 ? "Les salles ont les bonnes limites (100, 50, 25)" : "Aucune salle ouverte pour le moment (normal : elles s'ouvrent à la première visite)");
+    }
+  } catch (e) {
+    ajouter("Compétitions", "avert", "Salles illisibles", e.code || e.message);
+  }
+}
+
+function verifierNavigateur() {
+  ajouter(
+    "Application",
+    location.protocol === "https:" ? "ok" : "ko",
+    location.protocol === "https:" ? "Page servie en HTTPS" : "La page n'est pas en HTTPS"
+  );
+  try {
+    localStorage.setItem("ligue_verif", "1");
+    localStorage.removeItem("ligue_verif");
+    ajouter("Application", "ok", "Le stockage local fonctionne");
+  } catch (e) {
+    ajouter("Application", "ko", "Le stockage local est bloqué");
+  }
+  ajouter(
+    "À vérifier à la main",
+    "avert",
+    "Firebase, Authentication : « E-mail/Mot de passe » activé",
+    "Sans lui, la protection du compte par e-mail ne marche pas."
+  );
+}
+
+function afficher() {
+  const zone = $("liste");
+  zone.innerHTML = "";
+  let groupe = "";
+  lignes.forEach(function (l) {
+    if (l.groupe !== groupe) {
+      groupe = l.groupe;
+      const h = document.createElement("h3");
+      h.className = "titre-groupe";
+      h.textContent = groupe;
+      zone.appendChild(h);
+    }
+    const d = document.createElement("div");
+    d.className = "ligne " + l.etat;
+    const ic = document.createElement("span");
+    ic.className = "ic";
+    ic.textContent = l.etat === "ok" ? "✅" : l.etat === "avert" ? "⚠️" : "❌";
+    const t = document.createElement("span");
+    t.textContent = l.texte;
+    if (l.detail) {
+      const p = document.createElement("small");
+      p.textContent = l.detail;
+      t.appendChild(p);
+    }
+    d.appendChild(ic);
+    d.appendChild(t);
+    zone.appendChild(d);
+  });
+
+  const ko = lignes.filter(function (l) {
+    return l.etat === "ko";
+  }).length;
+  const av = lignes.filter(function (l) {
+    return l.etat === "avert";
+  }).length;
+  const b = $("bilan");
+  if (ko > 0) b.textContent = "❌ " + ko + " problème(s) à corriger avant de publier" + (av ? " · " + av + " point(s) d'attention" : "");
+  else if (av > 0) b.textContent = "⚠️ Prêt pour un test fermé · " + av + " point(s) d'attention";
+  else b.textContent = "✅ Tout est bon";
+}
+
+async function lancer() {
+  lignes = [];
+  $("bilan").textContent = "Vérification en cours…";
+  $("liste").innerHTML = "";
+  verifierNavigateur();
+  verifierReglages();
+  await verifierFichiers();
+  await verifierPagesLegales();
+  const uid = await verifierFirebase();
+  if (uid) {
+    await verifierCatalogue();
+    await verifierRegles(uid);
+    await verifierSalles();
+  }
+  // l'ordre d'affichage suit les groupes
+  const ordre = [
+    "Fichiers du site", "Pages légales", "Connexion et compte", "Sécurité de la base",
+    "Questions", "Compétitions", "Réglages de l'abonnement", "Application", "À vérifier à la main"
+  ];
+  lignes.sort(function (a, b) {
+    return ordre.indexOf(a.groupe) - ordre.indexOf(b.groupe);
+  });
+  afficher();
+}
+
+$("btn-relancer").addEventListener("click", lancer);
+lancer();
+</script>
+</body>
+  </html>
