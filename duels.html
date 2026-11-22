@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Ligue Bonogo - Mes duels</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .retour {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900;
+  }
+  .alerte {
+    min-height: 18px;
+    margin: 10px 0 0;
+    text-align: center;
+    color: #ff8a80;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .bilan {
+    margin: 16px 0 6px;
+    padding: 14px;
+    border-radius: 16px;
+    border: 2px solid #ffd54a;
+    background: rgba(240, 180, 0, 0.12);
+    text-align: center;
+    font-weight: 900;
+    font-size: 17px;
+  }
+  .bilan small {
+    display: block;
+    margin-top: 4px;
+    color: #cfd6ff;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .ami {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 16px;
+    border: 2px solid var(--bord);
+    background: rgba(10, 18, 90, 0.75);
+  }
+  .ami.mene {
+    border-color: #7be046;
+  }
+  .ami.perd {
+    border-color: #ff8a80;
+  }
+  .mini {
+    flex: none;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 3px solid var(--or);
+    background: linear-gradient(#2c3fb8, #121c70);
+    display: grid;
+    place-items: center;
+    font-size: 24px;
+  }
+  .texte {
+    flex: 1;
+    min-width: 0;
+  }
+  .texte b {
+    display: block;
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .texte span {
+    display: block;
+    font-size: 12px;
+    color: #aab4ff;
+  }
+  .score {
+    flex: none;
+    text-align: center;
+    font-weight: 900;
+    font-size: 20px;
+  }
+  .score small {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+<div class="ecran">
+
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <b>📜 Mes duels</b>
+    <span style="width: 62px;"></span>
+  </header>
+
+  <p id="alerte" class="alerte"></p>
+
+  <div id="bilan" class="bilan">Chargement…</div>
+  <div id="liste"></div>
+
+  <a class="btn bleu" href="defi.html" style="margin-top: 26px; font-size: 17px; padding: 14px;"><span class="ic">⚔️</span>Défier un ami</a>
+  <p class="message">Chaque duel est enregistré à la fin du match. Le score « Toi – Lui » compte tes victoires et les siennes.</p>
+  <div style="height: 70px;"></div>
+
+</div>
+
+<script>
+  window.addEventListener("error", function (e) {
+    var a = document.getElementById("alerte");
+    if (a) a.textContent = "Erreur : " + (e.message || "chargement impossible");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var a = document.getElementById("alerte");
+    var r = e.reason;
+    if (a) a.textContent = "Erreur : " + (r && r.message ? r.message : r);
+  });
+</script>
+
+<script type="module">
+import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import { ref, get } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { auth, db } from "./firebase.js";
+import { article, DEFAUTS, remplirAvatar } from "./profil.js";
+
+const $ = function (id) {
+  return document.getElementById(id);
+};
+
+function ligne(id, f, p) {
+  const titre = article(p.titre) || article(DEFAUTS.titre);
+  const v = f.v || 0;
+  const d = f.d || 0;
+
+  const div = document.createElement("div");
+  div.className = "ami" + (v > d ? " mene" : v < d ? " perd" : "");
+
+  const mini = document.createElement("div");
+  mini.className = "mini";
+  remplirAvatar(mini, p.animal, p.cadre);
+
+  const texte = document.createElement("div");
+  texte.className = "texte";
+  const nom = document.createElement("b");
+  nom.textContent = p.pseudo || "Joueur " + id.slice(-4).toUpperCase();
+  const sous = document.createElement("span");
+  sous.textContent = titre.texte;
+  const total = document.createElement("span");
+  if (p.duels) total.textContent = "Lui en tout : " + (p.duels.v || 0) + " V · " + (p.duels.d || 0) + " D";
+  texte.appendChild(nom);
+  texte.appendChild(sous);
+  texte.appendChild(total);
+
+  const score = document.createElement("div");
+  score.className = "score";
+  score.textContent = v + " – " + d;
+  const petit = document.createElement("small");
+  petit.textContent = v > d ? "tu mènes 🟢" : v < d ? "il mène 🔴" : "égalité ⚪";
+  score.appendChild(petit);
+
+  div.appendChild(mini);
+  div.appendChild(texte);
+  div.appendChild(score);
+  return div;
+}
+
+async function demarrer() {
+  try {
+    const cred = await signInAnonymously(auth);
+    const uid = cred.user.uid;
+
+    const lectures = await Promise.all([
+      get(ref(db, "profils/" + uid + "/duels")),
+      get(ref(db, "joueurs/" + uid + "/face"))
+    ]);
+    const g = lectures[0].exists() ? lectures[0].val() : {};
+    const faces = lectures[1].exists() ? lectures[1].val() : {};
+
+    const v = g.v || 0;
+    const d = g.d || 0;
+    const n = g.n || 0;
+    const bilan = $("bilan");
+    bilan.innerHTML = "";
+    const titre = document.createElement("div");
+    titre.textContent = v + " victoire" + (v > 1 ? "s" : "") + " · " + d + " défaite" + (d > 1 ? "s" : "");
+    bilan.appendChild(titre);
+    if (n > 0) {
+      const petit = document.createElement("small");
+      petit.textContent = n + " match" + (n > 1 ? "s" : "") + " nul" + (n > 1 ? "s" : "");
+      bilan.appendChild(petit);
+    }
+
+    const ids = Object.keys(faces).sort(function (a, b) {
+      const ta = (faces[a].v || 0) + (faces[a].d || 0) + (faces[a].n || 0);
+      const tb = (faces[b].v || 0) + (faces[b].d || 0) + (faces[b].n || 0);
+      return tb - ta;
+    });
+
+    const zone = $("liste");
+    zone.innerHTML = "";
+    if (ids.length === 0) {
+      const vide = document.createElement("p");
+      vide.className = "message";
+      vide.textContent = "Aucun duel enregistré pour le moment. Défie un ami !";
+      zone.appendChild(vide);
+      return;
+    }
+
+    const profils = await Promise.all(
+      ids.map(function (id) {
+        return get(ref(db, "profils/" + id)).then(function (s) {
+          return s.exists() ? s.val() : {};
+        });
+      })
+    );
+    ids.forEach(function (id, i) {
+      zone.appendChild(ligne(id, faces[id], profils[i]));
+    });
+  } catch (e) {
+    $("alerte").textContent = "Impossible de charger tes duels : " + (e.code || e.message);
+    $("bilan").textContent = "";
+  }
+}
+
+demarrer();
+</script>
+</body>
+  </html>
