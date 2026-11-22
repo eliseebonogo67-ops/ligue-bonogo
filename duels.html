@@ -131,28 +131,23 @@
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import { ref, get } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { article, RARETES, DEFAUTS } from "./profil.js";
+import { article, DEFAUTS, remplirAvatar } from "./profil.js";
 
 const $ = function (id) {
   return document.getElementById(id);
 };
 
 function ligne(id, f, p) {
-  const animal = article(p.animal) || article(DEFAUTS.animal);
   const titre = article(p.titre) || article(DEFAUTS.titre);
-  const r = RARETES[animal.rarete];
   const v = f.v || 0;
   const d = f.d || 0;
-  const n = f.n || 0;
 
   const div = document.createElement("div");
   div.className = "ami" + (v > d ? " mene" : v < d ? " perd" : "");
 
   const mini = document.createElement("div");
   mini.className = "mini";
-  mini.textContent = animal.emoji;
-  mini.style.borderColor = r.couleur;
-  mini.style.boxShadow = r.ombre;
+  remplirAvatar(mini, p.animal, p.cadre);
 
   const texte = document.createElement("div");
   texte.className = "texte";
