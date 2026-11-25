@@ -17,6 +17,13 @@
   .bloc {
     margin: 46px auto 0;
   }
+  label {
+    display: block;
+    margin: 0 0 6px 4px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--texte-doux);
+  }
   select,
   input {
     display: block;
@@ -81,7 +88,11 @@
 
   <section class="popup bloc">
     <div class="ruban">CRÉER UN DÉFI</div>
-    <select id="round"></select>
+    <label for="niveau">Niveau</label>
+    <select id="niveau"></select>
+    <label for="matiere">Matière</label>
+    <select id="matiere"></select>
+    <label for="mise">Mise</label>
     <select id="mise">
       <option value="0">Sans mise</option>
       <option value="1">Mise : 5 pièces</option>
@@ -105,7 +116,7 @@
   </section>
 
   <p id="msg" class="message"></p>
-  <p class="message">Chaque joueur paie la mise au début du match. Le gagnant récupère les deux mises, égalité = remboursement.</p>
+  <p class="message">Un duel, c’est toujours 5 questions. Chaque joueur paie la mise au début du match. Le gagnant récupère les deux mises, égalité = remboursement.</p>
 
 </div>
 
@@ -125,52 +136,30 @@
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import { ref, get } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { ROUNDS } from "./rounds.js";
+import { NIVEAUX, infoNiveau, infoMatiere, matieresPourNiveau } from "./matieres.js";
+import { nombreDisponibles } from "./tirage.js";
 
-// Code = "0" + mise (0, 1 ou 2) + numéro du sujet (2 caractères) + 2 lettres au hasard
+// Code = "0" + mise (0, 1 ou 2) + 4 lettres au hasard.
+// Le niveau, la matière et les 5 questions sont enregistrés dans la base par celui qui lance le duel.
 const LETTRES = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MISES = [0, 5, 10];
-const CLE_VUS = "ligue_vus";
+const QUESTIONS_MINI = 5;
 
 const $ = function (id) {
   return document.getElementById(id);
 };
 
 let codeCourant = null;
+let choixCourant = null;
 let solde = null;
 
 function dire(texte) {
   $("msg").textContent = texte;
 }
 
-function lireVus() {
-  try {
-    const v = JSON.parse(localStorage.getItem(CLE_VUS) || "[]");
-    return Array.isArray(v) ? v : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-// Un sujet que tu n'as pas encore joué (ou n'importe lequel si tu les as tous vus)
-function sujetAuHasard() {
-  const vus = lireVus();
-  const tous = ROUNDS.map(function (r, i) {
-    return i;
-  });
-  let candidats = tous.filter(function (i) {
-    return vus.indexOf(ROUNDS[i].id) === -1;
-  });
-  if (candidats.length === 0) candidats = tous;
-  return candidats[Math.floor(Math.random() * candidats.length)];
-}
-
-function nouveauCode(indexRound, indexMise) {
-  let c =
-    "0" + String(indexMise) +
-    LETTRES.charAt(Math.floor(indexRound / 32) % 32) +
-    LETTRES.charAt(indexRound % 32);
-  for (let i = 0; i < 2; i++) {
+function nouveauCode(indexMise) {
+  let c = "0" + String(indexMise);
+  for (let i = 0; i < 4; i++) {
     c += LETTRES.charAt(Math.floor(Math.random() * LETTRES.length));
   }
   return c;
@@ -178,22 +167,16 @@ function nouveauCode(indexRound, indexMise) {
 
 function lireCode(code) {
   if (!/^[0-9][0-2][A-Z2-9]{4}$/.test(code)) return null;
-  const a = LETTRES.indexOf(code.charAt(2));
-  const b = LETTRES.indexOf(code.charAt(3));
-  if (a < 0 || b < 0) return null;
-  const round = ROUNDS[a * 32 + b];
-  if (!round) return null;
-  return { round: round, mise: MISES[parseInt(code.charAt(1), 10)] };
+  return { mise: MISES[parseInt(code.charAt(1), 10)] };
 }
 
-function urlDuel(code, slot) {
-  const info = lireCode(code);
-  if (!info) return null;
-  return (
-    "duel.html?m=" + encodeURIComponent(code) +
-    "&r=" + encodeURIComponent(info.round.id) +
-    "&slot=" + slot
-  );
+function urlDuel(code, slot, choix) {
+  if (!lireCode(code)) return null;
+  let u = "duel.html?m=" + encodeURIComponent(code) + "&slot=" + slot;
+  if (slot === 1 && choix) {
+    u += "&n=" + encodeURIComponent(choix.niveau) + "&mat=" + encodeURIComponent(choix.matiere || "tous");
+  }
+  return u;
 }
 
 function lienDefi(code) {
@@ -246,18 +229,50 @@ async function chargerSolde() {
   }
 }
 
-// Le premier choix est « Au hasard », les autres sont tous les sujets
-const hasard = document.createElement("option");
-hasard.value = "-1";
-hasard.textContent = "🎲 Au hasard (sujet pas encore vu)";
-$("round").appendChild(hasard);
-ROUNDS.forEach(function (r, i) {
+// Les matières du niveau choisi (la salle BEPC n'a pas de Philosophie), avec le nombre de questions
+function remplirMatieres() {
+  const niveau = $("niveau").value;
+  const zone = $("matiere");
+  zone.innerHTML = "";
+
+  let total = 0;
+  const lignes = matieresPourNiveau(niveau).map(function (m) {
+    const nb = nombreDisponibles(niveau, m.id);
+    total += nb;
+    return { m: m, nb: nb };
+  });
+
+  const tous = document.createElement("option");
+  tous.value = "tous";
+  tous.textContent = "🎲 Toutes les matières (" + total + ")";
+  tous.disabled = total < QUESTIONS_MINI;
+  zone.appendChild(tous);
+
+  lignes.forEach(function (l) {
+    const o = document.createElement("option");
+    o.value = l.m.id;
+    o.textContent = l.m.emoji + " " + l.m.nom + (l.nb >= QUESTIONS_MINI ? " (" + l.nb + ")" : " — bientôt");
+    o.disabled = l.nb < QUESTIONS_MINI;
+    zone.appendChild(o);
+  });
+
+  // première option utilisable
+  for (let i = 0; i < zone.options.length; i++) {
+    if (!zone.options[i].disabled) {
+      zone.value = zone.options[i].value;
+      break;
+    }
+  }
+}
+
+NIVEAUX.forEach(function (n) {
   const o = document.createElement("option");
-  o.value = i;
-  o.textContent = r.titre;
-  $("round").appendChild(o);
+  o.value = n.id;
+  o.textContent = n.emoji + " " + n.nom;
+  $("niveau").appendChild(o);
 });
-$("round").value = "-1";
+$("niveau").addEventListener("change", remplirMatieres);
+remplirMatieres();
 
 $("btn-creer").addEventListener("click", function () {
   const indexMise = parseInt($("mise").value, 10);
@@ -266,23 +281,27 @@ $("btn-creer").addEventListener("click", function () {
     dire("Solde insuffisant : il te faut " + m + " pièces (tu en as " + solde + ").");
     return;
   }
-  let indexRound = parseInt($("round").value, 10);
-  if (indexRound < 0) indexRound = sujetAuHasard();
-  codeCourant = nouveauCode(indexRound, indexMise);
+  const niveau = $("niveau").value;
+  const matiere = $("matiere").value;
+  if (!matiere || $("matiere").selectedOptions[0].disabled) {
+    dire("Pas assez de questions pour ce choix : il en faut au moins " + QUESTIONS_MINI + ".");
+    return;
+  }
+  choixCourant = { niveau: niveau, matiere: matiere === "tous" ? "" : matiere };
+  codeCourant = nouveauCode(indexMise);
   $("code").textContent = codeCourant;
   $("zone-code").hidden = false;
-  dire(
-    "Défi créé · sujet : " + ROUNDS[indexRound].titre + " · mise : " + texteMise(m) +
-    ". Donne le code à ton ami, puis touche Commencer."
-  );
+  const lib = matiere === "tous" ? "toutes les matières" : infoMatiere(matiere).nom;
+  dire("Défi créé · " + infoNiveau(niveau).nom + " · " + lib + " · mise : " + texteMise(m) + ". Donne le code à ton ami, puis touche Commencer.");
 });
 
 $("btn-wa").addEventListener("click", function () {
   if (!codeCourant) return;
   const info = lireCode(codeCourant);
+  const lib = choixCourant && choixCourant.matiere ? infoMatiere(choixCourant.matiere).nom : "toutes les matières";
   const texte =
-    "⚔️ Je te défie sur Ligue Bonogo ! Mise : " + texteMise(info.mise) +
-    "\nCode : " + codeCourant + "\n" + lienDefi(codeCourant);
+    "⚔️ Je te défie sur Ligue Bonogo ! 5 questions · " + infoNiveau(choixCourant.niveau).nom + " · " + lib +
+    " · mise : " + texteMise(info.mise) + "\nCode : " + codeCourant + "\n" + lienDefi(codeCourant);
   if (navigator.share) {
     // Le partage du téléphone (WhatsApp, SMS…) est plus fiable qu'un lien direct
     navigator.share({ text: texte }).catch(function () {
@@ -302,14 +321,12 @@ $("btn-copier").addEventListener("click", function () {
 
 $("btn-commencer").addEventListener("click", function () {
   if (!codeCourant) return;
-  window.location.href = urlDuel(codeCourant, 1);
+  window.location.href = urlDuel(codeCourant, 1, choixCourant);
 });
 
 $("saisie").addEventListener("input", function () {
   const info = lireCode($("saisie").value.trim().toUpperCase());
-  if (info) {
-    dire("Round : " + info.round.titre + " · mise : " + texteMise(info.mise));
-  }
+  if (info) dire("Duel de 5 questions · mise : " + texteMise(info.mise));
 });
 
 $("btn-rejoindre").addEventListener("click", function () {
@@ -323,7 +340,7 @@ $("btn-rejoindre").addEventListener("click", function () {
     dire("Solde insuffisant : il te faut " + info.mise + " pièces (tu en as " + solde + ").");
     return;
   }
-  window.location.href = urlDuel(code, 2);
+  window.location.href = urlDuel(code, 2, null);
 });
 
 // Si l'ami ouvre le lien, le code est déjà rempli
@@ -332,12 +349,10 @@ const recu = params.get("code");
 if (recu) {
   $("saisie").value = recu.toUpperCase();
   const info = lireCode(recu.toUpperCase());
-  dire(info
-    ? "Round : " + info.round.titre + " · mise : " + texteMise(info.mise)
-    : "Code reçu invalide.");
+  dire(info ? "Duel de 5 questions · mise : " + texteMise(info.mise) : "Code reçu invalide.");
 }
 
 chargerSolde();
 </script>
 </body>
-</html>
+  </html>
