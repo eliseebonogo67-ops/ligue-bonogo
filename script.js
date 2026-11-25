@@ -2,8 +2,9 @@ import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/fir
 import { ref, get, set, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
 import { questionsPlates, matieresDuNiveau } from "./rounds.js";
-import { NIVEAUX, MATIERES, infoNiveau, infoMatiere } from "./matieres.js";
-import { ordreAleatoire, choixAleatoire } from "./outils.js";
+import { NIVEAUX, infoNiveau, infoMatiere, matieresPourNiveau } from "./matieres.js";
+import { htmlMath } from "./formules.js";
+import { ordreAleatoire } from "./outils.js";
 import { Sons, animerCompteur } from "./sons.js";
 import { aujourdhui, gradeDe, totalXp } from "./progression.js";
 import { assurerCompte } from "./abonnement.js";
@@ -11,6 +12,7 @@ import { assurerCompte } from "./abonnement.js";
 const PLAFOND_JOUR = 50;
 const CLE_HISTO = "ligue_historique";
 const MAX_HISTO = 5000;
+const CLE_RATEES = "ligue_ratees";
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -21,6 +23,7 @@ let fiche = { pieces: 0, jours: {}, xp: 0, stats: {}, jeux: {} };
 let session = null;
 let niveauCourant = null;
 let fileEcriture = Promise.resolve();
+let reussitesSet = null;
 
 function dejaGagne() {
   return fiche.jours[aujourdhui()] || 0;
@@ -68,17 +71,106 @@ function noterVue(id) {
   }
 }
 
-// Une question jamais vue d'abord ; sinon l'une des plus anciennes
-function choisir(pool) {
+// Les questions où tu t'es trompé : on les revoit en priorité en mode « Réviser »
+function lireRatees() {
+  try {
+    const h = JSON.parse(localStorage.getItem(CLE_RATEES) || "{}");
+    return h && typeof h === "object" ? h : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function noterRatee(id, juste) {
+  try {
+    const h = lireRatees();
+    if (juste) delete h[id];
+    else h[id] = Date.now();
+    localStorage.setItem(CLE_RATEES, JSON.stringify(h));
+  } catch (e) {
+    // sans importance
+  }
+}
+
+// Les questions réussies sur un autre téléphone comptent aussi comme « déjà travaillées »
+async function chargerReussites() {
+  if (reussitesSet) return;
+  try {
+    const snap = await get(ref(db, "reussites/" + uid));
+    reussitesSet = new Set(snap.exists() ? Object.keys(snap.val()) : []);
+  } catch (e) {
+    reussitesSet = new Set();
+  }
+}
+
+function hasard() {
+  const c = typeof globalThis !== "undefined" ? globalThis.crypto : null;
+  if (c && c.getRandomValues) {
+    const t = new Uint32Array(1);
+    c.getRandomValues(t);
+    return (t[0] + 0.5) / 4294967296;
+  }
+  return Math.random();
+}
+
+// Tirage au hasard où chaque question a un poids : plus le poids est grand, plus elle sort souvent
+function choisirPondere(liste, poids) {
+  let meilleure = null;
+  let meilleureCle = -1;
+  liste.forEach(function (q) {
+    const cle = Math.pow(hasard(), 1 / Math.max(0.0001, poids(q)));
+    if (cle > meilleureCle) {
+      meilleureCle = cle;
+      meilleure = q;
+    }
+  });
+  return meilleure;
+}
+
+function rangsCatalogue() {
+  const r = {};
+  const toutes = questionsPlates(null, null);
+  toutes.forEach(function (q, i) {
+    r[q.id] = i;
+  });
+  r.max = Math.max(1, toutes.length - 1);
+  return r;
+}
+
+function dejaTravaillee(h, id) {
+  return !!h[id] || !!(reussitesSet && reussitesSet.has(id));
+}
+
+// Mode « nouvelles » : une question jamais travaillée, les plus récemment chargées en priorité.
+// Quand tout a été vu, on reprend les plus anciennes.
+// Mode « réviser » : une question déjà travaillée, celles où tu t'es trompé d'abord.
+function choisirSuivante(s, candidats) {
   const h = lireHistorique();
-  const jamais = pool.filter(function (q) {
-    return !h[q.id];
+  if (s.mode === "reviser") {
+    const vues = candidats.filter(function (q) {
+      return dejaTravaillee(h, q.id);
+    });
+    if (vues.length === 0) return null;
+    const ratees = lireRatees();
+    return choisirPondere(vues, function (q) {
+      const age = h[q.id] ? 1 + (Date.now() - h[q.id]) / 86400000 : 8;
+      return (ratees[q.id] ? 6 : 1) * Math.min(8, age);
+    });
+  }
+  const neuves = candidats.filter(function (q) {
+    return !dejaTravaillee(h, q.id);
   });
-  if (jamais.length > 0) return choixAleatoire(jamais);
-  const tri = pool.slice().sort(function (a, b) {
-    return h[a.id] - h[b.id];
+  if (neuves.length > 0) {
+    s.faitLeTour = false;
+    return choisirPondere(neuves, function (q) {
+      return Math.exp(3 * ((s.rangs[q.id] || 0) / s.rangs.max));
+    });
+  }
+  s.faitLeTour = true;
+  return choisirPondere(candidats, function (q) {
+    const age = h[q.id] ? 1 + (Date.now() - h[q.id]) / 86400000 : 8;
+    return Math.min(8, age);
   });
-  return choixAleatoire(tri.slice(0, Math.max(1, Math.ceil(tri.length / 3))));
 }
 
 // ===== Écran 1 : le niveau =====
@@ -135,56 +227,66 @@ function afficherNiveaux() {
 function afficherMatieres(niveauId) {
   niveauCourant = niveauId;
   const n = infoNiveau(niveauId);
-  $("titre-niveau").textContent = n.emoji + " " + n.nom;
+  $("titre-niveau").textContent = n.emoji + " " + n.nom + " — Choisis une matière";
 
-  const liste = matieresDuNiveau(niveauId).sort(function (a, b) {
-    const ia = MATIERES.findIndex(function (m) {
-      return m.id === a.id;
-    });
-    const ib = MATIERES.findIndex(function (m) {
-      return m.id === b.id;
-    });
-    if (ia !== -1 && ib !== -1) return ia - ib;
-    if (ia !== -1) return -1;
-    if (ib !== -1) return 1;
-    return a.id < b.id ? -1 : 1;
+  // Toutes les matières de la salle, même celles qui n'ont pas encore de questions
+  const comptes = {};
+  matieresDuNiveau(niveauId).forEach(function (m) {
+    comptes[m.id] = m.nb;
+  });
+  const ids = matieresPourNiveau(niveauId).map(function (m) {
+    return m.id;
+  });
+  Object.keys(comptes).forEach(function (id) {
+    if (ids.indexOf(id) === -1) ids.push(id);
   });
 
   const zone = $("liste-matieres");
   zone.innerHTML = "";
-  if (liste.length > 1) {
-    const total = liste.reduce(function (s, m) {
-      return s + m.nb;
-    }, 0);
+  const total = ids.reduce(function (somme, id) {
+    return somme + (comptes[id] || 0);
+  }, 0);
+  if (total > 0) {
     zone.appendChild(
       carte("🎲", "Toutes les matières", pluriel(total, "question") + " mélangées", function () {
         lancer(niveauId, null);
       })
     );
   }
-  liste.forEach(function (m) {
-    const info = infoMatiere(m.id);
+  ids.forEach(function (id) {
+    const info = infoMatiere(id);
+    const nb = comptes[id] || 0;
     zone.appendChild(
-      carte(info.emoji, info.nom, pluriel(m.nb, "question"), function () {
-        lancer(niveauId, m.id);
-      })
+      carte(
+        info.emoji,
+        info.nom,
+        nb > 0 ? pluriel(nb, "question") : "Bientôt disponible",
+        function () {
+          lancer(niveauId, id);
+        },
+        nb === 0
+      )
     );
   });
   afficher("ecran-matiere");
 }
 
 // ===== Écran 3 : les questions, une par une =====
-function lancer(niveauId, matiereId) {
+async function lancer(niveauId, matiereId) {
   const pool = questionsPlates(niveauId, matiereId);
   if (pool.length === 0) {
     $("erreur").textContent = "Aucune question disponible pour ce choix.";
     return;
   }
   $("erreur").textContent = "";
+  await chargerReussites();
   session = {
     niveau: niveauId,
     matiere: matiereId,
     pool: pool,
+    mode: "nouvelles",
+    rangs: rangsCatalogue(),
+    faitLeTour: false,
     numero: 0,
     derniere: null,
     q: null,
@@ -197,10 +299,56 @@ function lancer(niveauId, matiereId) {
     gain: 0,
     xp: 0
   };
-  const info = matiereId ? infoMatiere(matiereId) : { emoji: "🎲", nom: "Toutes les matières" };
-  $("nom-seance").textContent = infoNiveau(niveauId).nom + " · " + info.emoji + " " + info.nom;
   afficher("ecran-quiz");
+  majEnTete();
   questionSuivante();
+}
+
+// Bandeau du haut : niveau, matière et mode (nouvelles questions ou révision)
+function majEnTete() {
+  const s = session;
+  const info = s.matiere ? infoMatiere(s.matiere) : { emoji: "🎲", nom: "Toutes les matières" };
+  $("nom-seance").textContent =
+    infoNiveau(s.niveau).nom + " · " + info.emoji + " " + info.nom + (s.mode === "reviser" ? " · 📖 Révision" : "");
+  const b = $("btn-reviser");
+  if (b) {
+    b.textContent = s.mode === "reviser" ? "🆕 Revenir aux nouvelles questions" : "📖 Réviser mes anciennes questions";
+  }
+}
+
+// Bouton « Réviser » : on bascule entre les nouvelles questions et les anciennes déjà travaillées
+function basculerMode() {
+  const s = session;
+  if (!s) return;
+  if (s.mode === "nouvelles") {
+    const h = lireHistorique();
+    const nb = s.pool.filter(function (q) {
+      return dejaTravaillee(h, q.id);
+    }).length;
+    if (nb === 0) {
+      $("erreur").textContent = "Tu n’as pas encore d’ancienne question à réviser ici : continue avec les nouvelles.";
+      return;
+    }
+    s.mode = "reviser";
+  } else {
+    s.mode = "nouvelles";
+  }
+  $("erreur").textContent = "";
+  s.derniere = null;
+  majEnTete();
+  questionSuivante();
+}
+
+function creerBoutonReviser() {
+  if ($("btn-reviser")) return;
+  const b = document.createElement("button");
+  b.id = "btn-reviser";
+  b.style.cssText =
+    "display:block;margin:16px auto 0;padding:11px 16px;border-radius:14px;border:2px solid var(--or);" +
+    "background:rgba(255,213,74,0.14);color:#ffe9a0;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer;";
+  b.textContent = "📖 Réviser mes anciennes questions";
+  b.addEventListener("click", basculerMode);
+  $("btn-quitter").parentNode.insertBefore(b, $("btn-quitter"));
 }
 
 function majScoreSeance() {
@@ -216,7 +364,13 @@ function questionSuivante() {
       return q.id !== s.derniere;
     });
   }
-  const q = choisir(candidats);
+  let q = choisirSuivante(s, candidats);
+  if (!q) {
+    // plus rien à réviser : retour aux nouvelles questions
+    s.mode = "nouvelles";
+    majEnTete();
+    q = choisirSuivante(s, candidats);
+  }
   s.q = q;
   s.derniere = q.id;
   s.numero++;
@@ -225,8 +379,11 @@ function questionSuivante() {
   s.ordre = ordreAleatoire(q.choix.length);
   noterVue(q.id);
 
-  $("question").textContent = q.q;
-  $("etiquette-q").textContent = s.matiere ? "" : infoMatiere(q.matiere).emoji + " " + infoMatiere(q.matiere).nom;
+  $("question").innerHTML = htmlMath(q.q);
+  const etiquette = s.matiere ? "" : infoMatiere(q.matiere).emoji + " " + infoMatiere(q.matiere).nom;
+  $("etiquette-q").textContent =
+    (s.mode === "reviser" ? "📖 Révision" : s.faitLeTour ? "♻️ Tu as fait le tour : questions déjà vues" : "") +
+    (etiquette ? (s.mode === "reviser" || s.faitLeTour ? " · " : "") + etiquette : "");
   $("retour-rep").textContent = "";
   $("explication").hidden = true;
   $("btn-suivant").hidden = true;
@@ -237,7 +394,7 @@ function questionSuivante() {
   zone.innerHTML = "";
   s.ordre.forEach(function (origine, k) {
     const b = document.createElement("button");
-    b.textContent = q.choix[origine];
+    b.innerHTML = htmlMath(q.choix[origine]);
     b.addEventListener("click", function () {
       repondre(k);
     });
@@ -258,6 +415,7 @@ function repondre(k) {
   });
   boutons[s.ordre.indexOf(q.bonne)].classList.add("juste");
   s.repondues++;
+  noterRatee(q.id, juste);
 
   if (juste) {
     s.serie++;
@@ -276,7 +434,7 @@ function repondre(k) {
 
   // L'explication de la bonne réponse : seulement dans l'entraînement
   if (q.expl) {
-    $("explication").textContent = "💡 " + q.expl;
+    $("explication").innerHTML = "💡 " + htmlMath(q.expl);
     $("explication").hidden = false;
   }
   $("btn-suivant").hidden = false;
@@ -337,6 +495,7 @@ async function enregistrer(s, q, juste, serie, numero) {
 
   fiche.stats[jour] = Object.assign({}, st, { bonnes: bonnes, repondues: repondues, serie: meilleure });
   if (premiere) {
+    if (reussitesSet) reussitesSet.add(q.id);
     fiche.xp += xpGagne;
     s.xp += xpGagne;
     if (credite > 0) {
@@ -428,6 +587,7 @@ async function demarrer() {
       stats: v.stats || {},
       jeux: v.jeux || {}
     };
+    creerBoutonReviser();
     afficherNiveaux();
   } catch (err) {
     $("erreur").textContent = "Erreur : " + (err.code || "") + " " + err.message;
