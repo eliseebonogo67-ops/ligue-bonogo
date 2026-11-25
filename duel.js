@@ -7,12 +7,14 @@ import {
   onValue
 } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { ROUNDS } from "./rounds.js";
 import { initHorloge, maintenant } from "./horloge.js";
 import { Sons } from "./sons.js";
 import { article, DEFAUTS } from "./profil.js";
 import { ordreReproductible } from "./outils.js";
 import { installerSignalement } from "./signalement.js";
+import { htmlMath } from "./formules.js";
+import { infoMatiere } from "./matieres.js";
+import { tirerDuel, questionParId, noterVus } from "./tirage.js";
 
 // ===== Moteur du duel (réglages modifiables pour les tests) =====
 const DUREE_CULTURE_S = 30;
@@ -24,9 +26,10 @@ const AVANCE_MS = 700; // petite pause avant le résultat quand les deux joueurs
 const ECART_EGALITE_MS = 0;
 const DEUX_FAUX = "annulee"; // "annulee" ou "premier"
 
-function dureeQuestionMs(rnd) {
-  const s = rnd.id.indexOf("calcul") !== -1 ? DUREE_CALCUL_S : DUREE_CULTURE_S;
-  return s * 1000;
+// Maths et Physique-Chimie demandent plus de temps (calculs)
+function dureeQuestionMs(q) {
+  const calcul = q.matiere === "maths" || q.matiere === "pc";
+  return (calcul ? DUREE_CALCUL_S : DUREE_CULTURE_S) * 1000;
 }
 
 function reponseValide(rep, p) {
@@ -39,10 +42,9 @@ function reponseValide(rep, p) {
 // Le planning dépend des réponses : si les deux joueurs ont répondu avant la fin du chrono,
 // le résultat arrive tout de suite et la question suivante démarre plus tôt.
 function planning(donnees, rnd) {
-  const duree = dureeQuestionMs(rnd);
   let debut = donnees.lanceLe + PAUSE_DEBUT_MS;
   return rnd.questions.map(function (q, i) {
-    const fin = debut + duree;
+    const fin = debut + dureeQuestionMs(q);
     const rq = (donnees.reponses && donnees.reponses["q" + i]) || {};
     const r1 = reponseValide(rq[donnees.j1], { debut: debut, fin: fin });
     const r2 = reponseValide(rq[donnees.j2], { debut: debut, fin: fin });
@@ -114,72 +116,30 @@ function calculer(rnd, donnees, now) {
   return { plan: plan, resultats: resultats, v1: v1, v2: v2 };
 }
 
-// ===== Sujets déjà vus (pour varier les questions) =====
-const CLE_VUS = "ligue_vus";
+// ===== Code de revanche =====
 const LETTRES = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-function lireVus() {
-  try {
-    const v = JSON.parse(localStorage.getItem(CLE_VUS) || "[]");
-    return Array.isArray(v) ? v : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-function ajouterVu(id) {
-  try {
-    const v = lireVus().filter(function (x) {
-      return x !== id;
-    });
-    v.push(id);
-    localStorage.setItem(CLE_VUS, JSON.stringify(v.slice(-60)));
-  } catch (e) {
-    // sans importance
-  }
-}
-
-// Nouveau code de revanche : même mise, autre sujet (un sujet pas encore vu si possible)
+// Même mise, quatre lettres au hasard : les questions sont tirées par celui qui lance le duel
 function nouveauCodeRevanche(ancien) {
-  const vus = lireVus();
-  const tous = ROUNDS.map(function (r, i) {
-    return i;
-  });
-  let candidats = tous.filter(function (i) {
-    return vus.indexOf(ROUNDS[i].id) === -1;
-  });
-  if (candidats.length === 0) {
-    candidats = tous.filter(function (i) {
-      return ROUNDS[i].id !== round.id;
-    });
-  }
-  if (candidats.length === 0) candidats = [0];
-  const idx = candidats[Math.floor(Math.random() * candidats.length)];
-
-  let c = "0" + ancien.charAt(1) + LETTRES.charAt(Math.floor(idx / 32) % 32) + LETTRES.charAt(idx % 32);
-  for (let i = 0; i < 2; i++) {
+  let c = "0" + ancien.charAt(1);
+  for (let i = 0; i < 4; i++) {
     c += LETTRES.charAt(Math.floor(Math.random() * LETTRES.length));
   }
   return c;
-}
-
-function roundIdDuCode(code) {
-  const a = LETTRES.indexOf(code.charAt(2));
-  const b = LETTRES.indexOf(code.charAt(3));
-  const r = ROUNDS[a * 32 + b];
-  return r ? r.id : ROUNDS[0].id;
 }
 
 // ===== Écran du duel =====
 const params = new URLSearchParams(window.location.search);
 const matchId = params.get("m");
 const slot = params.get("slot") === "2" ? 2 : 1;
-const round = ROUNDS.find(function (r) {
-  return r.id === params.get("r");
-}) || ROUNDS[0];
+// Les 5 questions du duel sont tirées par celui qui le lance et enregistrées dans la base :
+// les deux joueurs voient exactement les mêmes.
+let round = null;
+const niveauDemande = params.get("n") || "";
+const matiereDemandee = params.get("mat") || "";
 const adv = slot === 1 ? 2 : 1;
 
-// Code de défi : "0", mise (0, 1 ou 2), numéro du sujet (2 caractères), 2 lettres au hasard
+// Code de défi : "0", mise (0, 1 ou 2), puis 4 lettres au hasard
 function miseDuCode(code) {
   if (!/^[0-9][0-2][A-Z2-9]{4}$/.test(code || "")) return 0;
   return [0, 5, 10][parseInt(code.charAt(1), 10)];
@@ -208,6 +168,7 @@ let faceTexte = "";
 let revancheEnCours = false;
 let revancheSonJouee = false;
 let signal = null;
+let questionsPreparees = false;
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -224,6 +185,63 @@ function uidAdv() {
 function emojiAnimal(p) {
   const a = article(p && p.animal ? p.animal : DEFAUTS.animal) || article(DEFAUTS.animal);
   return a.emoji;
+}
+
+// Cinq questions exactement, du niveau et de la matière choisis : tirées par celui qui lance le duel
+async function preparerQuestions() {
+  if (slot !== 1 || questionsPreparees) return;
+  questionsPreparees = true;
+  try {
+    const deja = await get(ref(db, "duels/" + matchId + "/qs"));
+    if (deja.exists()) return;
+    if (niveauDemande !== "bepc" && niveauDemande !== "bac") {
+      erreur("Lance le duel depuis « Défier un ami » pour choisir le niveau et la matière.");
+      return;
+    }
+    const matiere = matiereDemandee === "tous" ? "" : matiereDemandee;
+    const liste = tirerDuel(niveauDemande, matiere);
+    if (!liste) {
+      erreur("Pas assez de questions pour ce choix : il en faut au moins 5.");
+      return;
+    }
+    const maj = {};
+    maj["duels/" + matchId + "/niveau"] = niveauDemande;
+    maj["duels/" + matchId + "/matiere"] = matiereDemandee || "tous";
+    maj["duels/" + matchId + "/qs"] = liste.map(function (q) {
+      return q.id;
+    });
+    await update(ref(db), maj);
+  } catch (e) {
+    questionsPreparees = false;
+    erreur(e);
+  }
+}
+
+// Reconstitue les 5 questions à partir de leurs identifiants
+function construireRound() {
+  if (round || !data.qs) return;
+  const ids = Array.isArray(data.qs)
+    ? data.qs
+    : Object.keys(data.qs)
+        .sort(function (a, b) {
+          return Number(a) - Number(b);
+        })
+        .map(function (k) {
+          return data.qs[k];
+        });
+  const questions = ids.map(function (id) {
+    return questionParId(id);
+  });
+  if (
+    questions.length !== 5 ||
+    questions.some(function (q) {
+      return !q;
+    })
+  ) {
+    erreur("Une question est introuvable : ferme l’application, rouvre-la puis réessaie.");
+    return;
+  }
+  round = { id: "duel", titre: "Duel", questions: questions };
 }
 
 // Le pseudo et l'animal des deux joueurs, chargés une seule fois
@@ -297,14 +315,15 @@ function majScore(calc) {
 // Chaque joueur voit les réponses dans un ordre différent (fixe pour toute la question)
 function construireQuestion(i, q) {
   questionAffichee = i;
-  $("numero").textContent = "Question " + (i + 1) + " / " + round.questions.length;
-  $("question").textContent = q.q;
+  const mi = infoMatiere(q.matiere);
+  $("numero").textContent = "Question " + (i + 1) + " / " + round.questions.length + " · " + mi.emoji + " " + mi.nom;
+  $("question").innerHTML = htmlMath(q.q);
   const zone = $("choix");
   zone.innerHTML = "";
   const ordre = ordreReproductible(q.choix.length, matchId + "|" + uid + "|" + i);
   ordre.forEach(function (origine) {
     const b = document.createElement("button");
-    b.textContent = q.choix[origine];
+    b.innerHTML = htmlMath(q.choix[origine]);
     b.dataset.orig = String(origine);
     b.addEventListener("click", function () {
       envoyer(i, origine);
@@ -394,7 +413,13 @@ function phaseResultat(i, q, p, calc, now) {
 
   const cAdv = res ? (slot === 1 ? res.c2 : res.c1) : null;
   const txtAdv = cAdv !== null ? q.choix[cAdv] : "pas de réponse valide";
-  $("info").textContent = verdict + "\nAdversaire : " + txtAdv;
+  const info = $("info");
+  info.textContent = "";
+  info.appendChild(document.createTextNode(verdict));
+  info.appendChild(document.createElement("br"));
+  const ligne = document.createElement("span");
+  ligne.innerHTML = "Adversaire : " + htmlMath(txtAdv);
+  info.appendChild(ligne);
 }
 
 // Les deux joueurs sont là : chacun paie sa mise (une seule fois)
@@ -520,8 +545,11 @@ function allerRevanche(r) {
   const nouveauSlot = r.par === uid ? 1 : 2;
   window.location.href =
     "duel.html?m=" + encodeURIComponent(r.code) +
-    "&r=" + encodeURIComponent(roundIdDuCode(r.code)) +
-    "&slot=" + nouveauSlot;
+    "&slot=" + nouveauSlot +
+    (nouveauSlot === 1
+      ? "&n=" + encodeURIComponent(data.niveau || niveauDemande) +
+        "&mat=" + encodeURIComponent(data.matiere || matiereDemandee || "tous")
+      : "");
 }
 
 async function revanche() {
@@ -611,11 +639,22 @@ function afficher() {
     return;
   }
 
+  // Un troisième joueur ne peut pas entrer dans un duel
+  if (uid !== data.j1 && uid !== data.j2) {
+    etat("Ce duel est déjà complet.");
+    return;
+  }
+
   chargerNoms();
   payerMise();
+  construireRound();
 
   if (!data.lanceLe) {
-    etat("Adversaire trouvé, lancement…");
+    etat(round ? "Adversaire trouvé, lancement…" : "Préparation des 5 questions…");
+    return;
+  }
+  if (!round) {
+    etat("Préparation des 5 questions…");
     return;
   }
 
@@ -635,7 +674,13 @@ function afficher() {
 
   if (!departJoue) {
     departJoue = true;
-    ajouterVu(round.id);
+    // Ces 5 questions sont notées : elles ne reviendront pas tout de suite dans tes prochains duels
+    noterVus(
+      "duel",
+      round.questions.map(function (q) {
+        return q.id;
+      })
+    );
     Sons.depart();
   }
 
@@ -661,7 +706,7 @@ function afficher() {
 }
 
 function lancerSiPret() {
-  if (slot === 1 && !lanceEnvoye && data.j1 === uid && data.j2 && !data.lanceLe) {
+  if (slot === 1 && !lanceEnvoye && data.j1 === uid && data.j2 && data.qs && !data.lanceLe) {
     lanceEnvoye = true;
     set(ref(db, "duels/" + matchId + "/lanceLe"), maintenant()).catch(erreur);
   }
@@ -682,7 +727,8 @@ async function demarrer() {
     signal = installerSignalement(
       $("zone-question"),
       function () {
-        return { rid: round.id, index: questionAffichee };
+        const q = round && round.questions[questionAffichee];
+        return q ? { rid: q.rid, index: q.index } : null;
       },
       function () {
         return uid;
@@ -704,7 +750,12 @@ async function demarrer() {
       data = s.val() || {};
       lancerSiPret();
     });
-    await set(ref(db, "duels/" + matchId + "/j" + slot), uid);
+    try {
+      await set(ref(db, "duels/" + matchId + "/j" + slot), uid);
+    } catch (e) {
+      // déjà inscrit (page rechargée) ou place prise : l'écran l'indiquera
+    }
+    preparerQuestions();
     setInterval(afficher, 250);
   } catch (e) {
     erreur(e);
