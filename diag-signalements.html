@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1250">
+<title>Diagnostic des signalements</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .retour { display: grid; place-items: center; color: #fff; text-decoration: none; font-weight: 900; }
+  .etat { margin: 18px 0 8px; padding: 14px; border-radius: 16px; border: 2px solid #ffd54a; background: rgba(240, 180, 0, 0.12); text-align: center; font-weight: 900; font-size: 16px; line-height: 1.4; }
+  .sortie { margin: 10px 0; padding: 10px; border-radius: 12px; background: rgba(0, 0, 20, 0.5); color: #cfd6ff; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+  .petit { margin-top: 12px; padding: 12px; font-size: 16px; }
+</style>
+</head>
+<body>
+<div class="ecran">
+  <header class="haut">
+    <a class="icone retour" href="accueil.html">←</a>
+    <b>🔎 Signalements</b>
+    <span style="width: 62px;"></span>
+  </header>
+
+  <p id="etat" class="etat">Vérification…</p>
+  <pre id="sortie" class="sortie"></pre>
+  <button id="btn-test" class="btn jaune petit">📨 Envoyer un signalement de test</button>
+  <button id="btn-relancer" class="btn bleu petit">↻ Relancer</button>
+  <p class="message">Le signalement de test apparaît dans Administration, section Signalements, sous le nom « diag_test (série supprimée) ». Tu peux l'effacer avec « Résolu ».</p>
+</div>
+
+<script type="module">
+import { ref, get, set } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+import { db, authReel } from "./firebase.js";
+
+const $ = function (id) {
+  return document.getElementById(id);
+};
+
+async function lancer() {
+  const u = authReel.currentUser;
+  let sortie = "Ton identifiant : " + (u ? u.uid : "?") + "\nCompte : " + (u && !u.isAnonymous ? "protégé par e-mail" : "invité") + "\n";
+  try {
+    const s = await get(ref(db, "signalements"));
+    if (!s.exists()) {
+      $("etat").textContent = "✅ Cet appareil est administrateur. Aucun signalement enregistré pour le moment.";
+    } else {
+      const v = s.val();
+      let total = 0;
+      let lignes = "";
+      Object.keys(v).forEach(function (rid) {
+        Object.keys(v[rid] || {}).forEach(function (qi) {
+          const n = Object.keys(v[rid][qi] || {}).length;
+          total += n;
+          lignes += rid + " · question " + (parseInt(qi, 10) + 1) + " · " + n + " signalement(s)\n";
+        });
+      });
+      $("etat").textContent = "✅ Administrateur. " + total + " signalement(s) enregistré(s).";
+      sortie += "\n" + lignes;
+    }
+  } catch (e) {
+    if (e.code === "PERMISSION_DENIED" || /permission/i.test(e.message || "")) {
+      $("etat").textContent = "❌ Lecture refusée : cet appareil n'est PAS reconnu administrateur, ou les règles ne sont pas à jour.";
+      sortie +=
+        "\nQue faire :\n1) Publie les règles Firebase de la dernière partie.\n" +
+        "2) Dans Administration, touche « Vérifier mon accès ».\n" +
+        "3) Sinon, dans la console Firebase (Realtime Database, Données), ouvre admin puis uid et mets exactement l'identifiant affiché ci-dessus.\n";
+    } else {
+      $("etat").textContent = "❌ Erreur : " + (e.code || e.message);
+    }
+  }
+  $("sortie").textContent = sortie;
+}
+
+$("btn-test").addEventListener("click", async function () {
+  const u = authReel.currentUser;
+  if (!u) return;
+  try {
+    await set(ref(db, "signalements/diag_test/0/" + u.uid), { m: "autre", t: Date.now() });
+    $("sortie").textContent += "\n✓ Signalement de test envoyé (l'écriture fonctionne).";
+  } catch (e) {
+    $("sortie").textContent +=
+      e.code === "PERMISSION_DENIED"
+        ? "\n⚠️ Écriture refusée : déjà envoyé, ou règles à publier."
+        : "\n❌ Envoi impossible : " + (e.code || e.message);
+  }
+  lancer();
+});
+$("btn-relancer").addEventListener("click", lancer);
+lancer();
+</script>
+</body>
+</html>
