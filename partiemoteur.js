@@ -124,14 +124,14 @@ export function calculerTournoi(ids, lanceLe, base, rounds, partie, now) {
 // ===== Mode élimination =====
 
 // Les questions des tours se suivent : celles du round de départ, puis du round suivant, etc.
-// qi = numéro de la question dans sa série (utile pour la signaler)
+// rid / qi : identité de la question dans le catalogue (utile pour la signaler)
 function suiteQuestions(rounds, base, nombre) {
   const suite = [];
   let r = 0;
   while (suite.length < nombre && r < 500) {
     const rr = rounds[(base + r) % rounds.length];
     rr.questions.forEach(function (q, qi) {
-      suite.push({ q: q, rid: rr.id, titre: rr.titre, qi: qi });
+      suite.push({ q: q, rid: q.rid || rr.id, titre: rr.titre, qi: q.index !== undefined ? q.index : qi });
     });
     r++;
   }
@@ -211,4 +211,4 @@ export function calculerElimination(ids, lanceLe, base, rounds, tours, now) {
     gagnants: gagnants,
     partage: gagnants.length > 1
   };
-  }
+}
