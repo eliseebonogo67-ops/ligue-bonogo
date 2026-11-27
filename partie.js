@@ -8,7 +8,6 @@ import {
   runTransaction
 } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { ROUNDS } from "./rounds.js";
 import { calculerTournoi, calculerElimination, SEUIL_ELIMINATION } from "./partiemoteur.js";
 import { ouvrirCycle, prolonger } from "./cycles.js";
 import { initHorloge, maintenant } from "./horloge.js";
@@ -16,6 +15,9 @@ import { Sons } from "./sons.js";
 import { article, DEFAUTS } from "./profil.js";
 import { ordreReproductible } from "./outils.js";
 import { installerSignalement } from "./signalement.js";
+import { htmlMath } from "./formules.js";
+import { infoMatiere } from "./matieres.js";
+import { questionParId, noterVus } from "./tirage.js";
 
 const params = new URLSearchParams(window.location.search);
 const salonId = params.get("s");
@@ -48,6 +50,9 @@ let profilsDemandes = {};
 let versionProfils = 0;
 let signal = null;
 let cibleSignal = null;
+let manchesSalle = null;
+let manchesPour = "";
+let vusNotes = {};
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -62,6 +67,53 @@ function listeJoueurs() {
   return Object.keys(j).sort(function (a, b) {
     return j[a] - j[b] || (a < b ? -1 : 1);
   });
+}
+
+// Les 30 questions de la salle sont tirées une fois pour toutes à l'ouverture et enregistrées dans la base :
+// tous les joueurs voient les mêmes. Chaque manche a exactement 5 questions.
+function mancheDeSalle() {
+  if (!salon || !salon.qs) return null;
+  const ids = Array.isArray(salon.qs)
+    ? salon.qs
+    : Object.keys(salon.qs)
+        .sort(function (a, b) {
+          return Number(a) - Number(b);
+        })
+        .map(function (k) {
+          return salon.qs[k];
+        });
+  const cle = ids.join("|");
+  if (manchesSalle && manchesPour === cle) return manchesSalle;
+  const questions = ids.map(function (id) {
+    return questionParId(id);
+  });
+  if (
+    questions.length < 30 ||
+    questions.some(function (q) {
+      return !q;
+    })
+  ) {
+    return null;
+  }
+  const manches = [];
+  for (let n = 0; n < 6; n++) {
+    manches.push({ id: "comp_m" + (n + 1), titre: "Manche " + (n + 1), questions: questions.slice(n * 5, n * 5 + 5) });
+  }
+  manchesSalle = manches;
+  manchesPour = cle;
+  return manches;
+}
+
+// Ces questions viennent d'être jouées : elles ne reviendront pas tout de suite dans les prochaines compétitions
+function noterJouees(cle, questions) {
+  if (vusNotes[cle]) return;
+  vusNotes[cle] = true;
+  noterVus(
+    "comp",
+    questions.map(function (q) {
+      return q.id;
+    })
+  );
 }
 
 // Charge une seule fois l'animal et le pseudo des joueurs demandés
@@ -227,7 +279,7 @@ function construireChoix(q, graine, auClic) {
   zone.innerHTML = "";
   ordreReproductible(q.choix.length, graine).forEach(function (origine) {
     const b = document.createElement("button");
-    b.textContent = q.choix[origine];
+    b.innerHTML = htmlMath(q.choix[origine]);
     b.dataset.orig = String(origine);
     b.addEventListener("click", function () {
       auClic(origine);
@@ -257,12 +309,13 @@ function montrerQuestion(m, i, q) {
   $("statut").hidden = true;
   $("zone-fin").hidden = true;
   $("zone-question").hidden = false;
-  cibleSignal = { rid: m.round.id, index: i };
+  cibleSignal = { rid: q.rid, index: q.index };
   const cle = m.n + "-" + i;
   if (rendu !== cle) {
     rendu = cle;
-    $("numero").textContent = "Question " + (i + 1) + " / " + m.round.questions.length;
-    $("question").textContent = q.q;
+    const mi = infoMatiere(q.matiere);
+    $("numero").textContent = "Question " + (i + 1) + " / " + m.round.questions.length + " · " + mi.emoji + " " + mi.nom;
+    $("question").innerHTML = htmlMath(q.q);
     construireChoix(q, salonId + "|" + uid + "|" + cle, function (origine) {
       envoyer(m.n, i, origine, q);
     });
@@ -321,7 +374,7 @@ function avantManche(t, m, tous, now) {
     Sons.tic();
   }
   if (t.manches.length === 1) {
-    $("titre-manche").textContent = ROUNDS[salon.round] ? ROUNDS[salon.round].titre : "";
+    $("titre-manche").textContent = "5 questions par manche";
     viderClassement();
     etat("La partie commence dans " + reste + " s");
     return;
@@ -361,7 +414,7 @@ async function terminerCycle(fin) {
   } catch (e) {
     // un autre joueur l'a déjà écrit
   }
-  await ouvrirCycle(salon.fid, fin, ROUNDS.length);
+  await ouvrirCycle(salon.fid, fin);
 }
 
 function finTournoi(t, m, tous) {
@@ -444,8 +497,9 @@ function montrerQuestionE(d) {
   if (rendu !== cle) {
     rendu = cle;
     const q = d.item.q;
-    $("numero").textContent = "Question " + (d.k + 1);
-    $("question").textContent = q.q;
+    const mi = infoMatiere(q.matiere);
+    $("numero").textContent = "Question " + (d.k + 1) + " · " + mi.emoji + " " + mi.nom;
+    $("question").innerHTML = htmlMath(q.q);
     construireChoix(q, salonId + "|" + uid + "|" + cle, function (origine) {
       envoyerE(d.k, origine, q);
     });
@@ -586,7 +640,7 @@ function finElimination(t, d, tous) {
 }
 
 function afficherElimination(tous, now) {
-  const t = calculerElimination(tous, salon.lanceLe - DECALAGE_DEPART_MS, salon.round, ROUNDS, partie.tours || {}, now);
+  const t = calculerElimination(tous, salon.lanceLe - DECALAGE_DEPART_MS, 0, mancheDeSalle(), partie.tours || {}, now);
   const d = t.tours[t.tours.length - 1];
 
   if (t.termine) {
@@ -610,6 +664,7 @@ function afficherElimination(tous, now) {
 
   if (!departsJoues["e" + d.k]) {
     departsJoues["e" + d.k] = true;
+    noterJouees("e" + d.k, [d.item.q]);
     Sons.depart();
   }
 
@@ -617,7 +672,7 @@ function afficherElimination(tous, now) {
   const moiVivant = d.vivants.indexOf(uid) !== -1;
   const moiApres = moiVivant && d.elimines.indexOf(uid) === -1;
 
-  $("titre-manche").textContent = "Question " + (d.k + 1) + " · " + d.item.titre;
+  $("titre-manche").textContent = "Question " + (d.k + 1);
   afficherEtatElimination(restants, tous.length, d.decide ? moiApres : moiVivant);
 
   if (!moiVivant) {
@@ -661,7 +716,6 @@ function afficher() {
 
   const now = maintenant();
   const tous = listeJoueurs();
-  const round = ROUNDS[salon.round] || ROUNDS[0];
   $("cagnotte").textContent = pot();
   chargerProfils(tous.length <= 8 ? tous : [uid]);
 
@@ -676,7 +730,7 @@ function afficher() {
   // 1. Inscriptions
   if (!salon.lanceLe) {
     $("retour").hidden = false;
-    $("titre-manche").textContent = "Salle " + salon.mise + " 🪙 · " + round.titre;
+    $("titre-manche").textContent = "Salle " + salon.mise + " 🪙";
     viderClassement();
     const n = tous.length;
 
@@ -718,13 +772,19 @@ function afficher() {
   $("btn-quitter").hidden = true;
   $("liste-attente").hidden = true;
 
+  if (!mancheDeSalle()) {
+    $("retour").hidden = false;
+    etat("Les questions de cette salle sont introuvables.\nMets à jour l’application puis reviens aux salles.");
+    return;
+  }
+
   // 5 joueurs ou plus : mode élimination
   if (tous.length >= SEUIL_ELIMINATION) {
     afficherElimination(tous, now);
     return;
   }
 
-  const t = calculerTournoi(tous, salon.lanceLe - DECALAGE_DEPART_MS, salon.round, ROUNDS, partie, now);
+  const t = calculerTournoi(tous, salon.lanceLe - DECALAGE_DEPART_MS, 0, mancheDeSalle(), partie, now);
   const m = t.manches[t.manches.length - 1];
 
   if (t.termine) {
@@ -742,6 +802,7 @@ function afficher() {
 
   if (!departsJoues[m.n]) {
     departsJoues[m.n] = true;
+    noterJouees("m" + m.n, m.round.questions);
     Sons.depart();
   }
 
@@ -752,7 +813,7 @@ function afficher() {
   const p = plan.questions[i];
   const q = m.round.questions[i];
 
-  $("titre-manche").textContent = "Manche " + m.n + " · " + m.round.titre;
+  $("titre-manche").textContent = "Manche " + m.n;
   afficherClassement(m.scores, m.joueurs, tous, m.marques);
 
   if (m.joueurs.indexOf(uid) === -1) {
