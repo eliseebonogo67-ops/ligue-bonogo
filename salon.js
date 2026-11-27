@@ -8,10 +8,10 @@ import {
   runTransaction
 } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { ROUNDS } from "./rounds.js";
 import { FORMATS } from "./formats.js";
 import { ouvrirCycle, creerFiche, prolonger } from "./cycles.js";
 import { initHorloge, maintenant } from "./horloge.js";
+import { questionsDeCompetition } from "./tirage.js";
 
 const MAX_PARTIES_JOUR = 10;
 const MAX_JEU_MS = 910000;
@@ -240,20 +240,20 @@ function entretien() {
 
     if (id === null) {
       action = function () {
-        ouvrirCycle(f.id, now, ROUNDS.length);
+        ouvrirCycle(f.id, now);
       };
     } else if (id && s === null) {
       action = function () {
-        creerFiche(id, ROUNDS.length);
+        creerFiche(id);
       };
     } else if (s) {
       if (s.fini) {
         action = function () {
-          ouvrirCycle(f.id, s.fini, ROUNDS.length);
+          ouvrirCycle(f.id, s.fini);
         };
       } else if (s.lanceLe && now > s.lanceLe + MAX_JEU_MS) {
         action = function () {
-          ouvrirCycle(f.id, now, ROUNDS.length);
+          ouvrirCycle(f.id, now);
         };
       } else if (!s.lanceLe && now >= s.ferme && nbJoueurs(s) < 2) {
         action = function () {
@@ -291,7 +291,13 @@ async function demarrer() {
     });
 
     setInterval(majCartes, 1000);
-    setInterval(entretien, 2000);
+
+    // Les compétitions mélangent toutes les matières sauf Maths, Physique-Chimie et Philosophie
+    if (questionsDeCompetition() === 0) {
+      dire("Les compétitions ouvriront dès que des questions seront chargées (hors Maths, Physique-Chimie et Philosophie).");
+    } else {
+      setInterval(entretien, 2000);
+    }
   } catch (e) {
     dire("Erreur : " + (e.code || e.message));
   }
