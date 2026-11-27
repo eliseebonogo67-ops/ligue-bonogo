@@ -1,19 +1,25 @@
 import { ref, set, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { db } from "./firebase.js";
 import { formatDe, FENETRE_MS, idCycle, ouvreDeId } from "./formats.js";
+import { tirerCompetition } from "./tirage.js";
 
-// Crée la fiche d'un cycle (une seule fois : les règles refusent un doublon)
-export async function creerFiche(id, nbRounds) {
+// Crée la fiche d'un cycle (une seule fois : les règles refusent un doublon).
+// Les 30 questions sont tirées ici : toutes les matières sauf Maths, Physique-Chimie et Philosophie.
+export async function creerFiche(id) {
   const fid = id.split("_")[0];
   const f = formatDe(fid);
-  if (!f) return;
+  if (!f) return false;
+  const liste = tirerCompetition(30);
+  if (!liste) return false;
   const ouvre = ouvreDeId(id);
   const b = "salons/" + id + "/";
   const maj = {};
   maj[b + "fid"] = fid;
   maj[b + "mise"] = f.mise;
   maj[b + "max"] = f.max;
-  maj[b + "round"] = Math.floor(ouvre / 1000) % nbRounds;
+  maj[b + "qs"] = liste.map(function (q) {
+    return q.id;
+  });
   maj[b + "ouvre"] = ouvre;
   maj[b + "ferme"] = ouvre + FENETRE_MS;
   maj[b + "nb"] = 0;
@@ -22,17 +28,18 @@ export async function creerFiche(id, nbRounds) {
   } catch (e) {
     // déjà créée par un autre téléphone
   }
+  return true;
 }
 
 // Désigne un nouveau cycle courant, puis crée sa fiche
-export async function ouvrirCycle(fid, ouvreMs, nbRounds) {
+export async function ouvrirCycle(fid, ouvreMs) {
   const id = idCycle(fid, ouvreMs);
   try {
     await set(ref(db, "salles/" + fid + "/courant"), id);
   } catch (e) {
     return false;
   }
-  await creerFiche(id, nbRounds);
+  await creerFiche(id);
   return true;
 }
 
