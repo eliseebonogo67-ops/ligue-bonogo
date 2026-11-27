@@ -110,7 +110,7 @@ function rendre(s) {
           contenu = g.texte;
           i = g.fin;
         } else {
-          const m = /^[0-9A-Za-z.,²³¹⁰⁴⁵⁶⁷⁸⁹]+/.exec(s.slice(i));
+          const m = /^[0-9A-Za-z²³¹⁰⁴⁵⁶⁷⁸⁹]+(?:[.,][0-9]+)?/.exec(s.slice(i));
           contenu = m ? m[0] : "";
           i += contenu.length;
         }
@@ -198,4 +198,4 @@ export function htmlMath(texte) {
       return rendre(morceau);
     })
     .join("");
-}
+    }
