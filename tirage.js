@@ -1,4 +1,4 @@
-// Choix des questions des duels (et, plus tard, des compétitions) :
+// Choix des questions des duels et des compétitions :
 // on privilégie les questions que le joueur n'a pas encore vues, les plus récemment chargées,
 // et on varie les matières. Quand il a fait le tour, on mélange 70 % de neuves et 30 % d'anciennes.
 import { questionsPlates } from "./rounds.js";
@@ -177,8 +177,27 @@ export function tirerCompetition(k) {
   const pool = questionsPlates(null, null).filter(function (q) {
     return matiereDeCompetition(q.matiere);
   });
-  if (pool.length < k) return null;
-  return choisirParmi(pool, k, lireMemoire("comp"), lireMemoire("duel"), rangs());
+  if (pool.length === 0) return null;
+  const choisies = choisirParmi(pool, Math.min(k, pool.length), lireMemoire("comp"), lireMemoire("duel"), rangs());
+  return remplirJusqua(choisies, k);
+}
+
+// Catalogue encore petit : on repasse dans le même ordre pour toujours avoir k questions
+export function remplirJusqua(liste, k) {
+  const res = liste.slice();
+  let i = 0;
+  while (res.length < k && liste.length > 0) {
+    res.push(liste[i % liste.length]);
+    i++;
+  }
+  return res;
+}
+
+// Combien de questions peuvent tomber en compétition (pour prévenir quand il n'y en a pas encore)
+export function questionsDeCompetition() {
+  return questionsPlates(null, null).filter(function (q) {
+    return matiereDeCompetition(q.matiere);
+  }).length;
 }
 
 // Retrouve une question à partir de son identifiant (celui enregistré dans le duel ou la salle)
@@ -193,4 +212,4 @@ export function questionParId(id) {
 // Nombre de questions disponibles pour un duel (pour griser les choix trop pauvres)
 export function nombreDisponibles(niveau, matiere) {
   return questionsPlates(niveau, matiere || null).length;
-          }
+            }
