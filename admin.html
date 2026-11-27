@@ -191,6 +191,15 @@
     padding: 10px;
     font-size: 14px;
   }
+  .apercu-f {
+    margin: 10px 0;
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.08);
+    font-size: 14px;
+    line-height: 1.6;
+    color: #fff;
+  }
   .pastille {
     display: inline-block;
     margin-left: 6px;
@@ -217,9 +226,12 @@
   <section class="popup bloc">
     <div class="ruban">ACCÈS</div>
     <p class="aide">Ton identifiant : <b id="uid">…</b></p>
+    <button id="btn-copier-uid" class="btn bleu petit">📋 Copier mon identifiant</button>
     <button id="btn-admin" class="btn jaune petit">🔑 Devenir administrateur</button>
     <button id="btn-verif" class="btn bleu petit">Vérifier mon accès</button>
     <p id="etat-acces" class="aide"></p>
+    <p id="aide-recup" class="aide" hidden>Pour reprendre l’administration sur ce téléphone : dans la console Firebase, ouvre Realtime Database, puis Données, supprime le nœud « admin » (touche-le, puis la corbeille). Reviens ici et touche « Devenir administrateur ». Ensuite, protège ton compte avec ton e-mail (Mon compte) pour ne plus perdre ce rôle.</p>
+    <a class="btn jaune petit" href="abonnes.html">👥 Gérer les candidats</a>
   </section>
 
   <section class="popup bloc">
@@ -254,6 +266,7 @@
     <select id="matiere"></select>
     <input id="matiere-autre" type="text" placeholder="Nom de la matière" autocomplete="off" hidden>
     <label class="coche"><input id="calcul" type="checkbox"> Questions de calcul (chrono plus long)</label>
+    <p class="aide">Formules acceptées dans les questions : √(2^5 × 3^5), √6, x^2, 10^{-3}, H_2O, \frac{a+b}{2}, \times, \pi, \leq… (tu peux aussi écrire directement ², ⁵, ×, √).</p>
     <label for="json">JSON de ton ancienne app</label>
     <textarea id="json" placeholder='[{"texte":"…","reponses":[{"texte":"…","correct":true}, …],"explication":"…"}, …]'></textarea>
     <button id="btn-analyser" class="btn bleu petit">🔍 Analyser</button>
@@ -282,7 +295,8 @@
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import { ref, get, set, update } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 import { auth, db } from "./firebase.js";
-import { NIVEAUX, MATIERES, infoNiveau, infoMatiere, slugTexte, normaliserNiveau, normaliserMatiere } from "./matieres.js";
+import { NIVEAUX, MATIERES, infoNiveau, infoMatiere, slugTexte, normaliserNiveau, normaliserMatiere, matieresPourNiveau } from "./matieres.js";
+import { htmlMath } from "./formules.js";
 
 const $ = function (id) {
   return document.getElementById(id);
@@ -358,6 +372,7 @@ async function chargerTout() {
   } catch (e) {
     signaux = {};
     $("etat-signaux").textContent = "Les signalements ne sont visibles que par l’administrateur.";
+    $("aide-recup").hidden = false;
   }
   afficherSignalements();
   afficherCatalogue();
@@ -589,11 +604,19 @@ function rendreEditeur(cible) {
   zone.appendChild(el("label", "", "Matière"));
   const matiere = el("select");
   const mActuelle = normaliserMatiere(s.matiere);
-  const optionsM = [{ id: "", nom: "— non classée —" }].concat(MATIERES);
-  if (mActuelle && !MATIERES.some(function (m) { return m.id === mActuelle; })) {
-    optionsM.push({ id: mActuelle, nom: infoMatiere(mActuelle).nom });
+  // la salle BEPC n'a pas de Philosophie
+  function remplirMatieresEditeur(valeur) {
+    const liste = niveau.value ? matieresPourNiveau(niveau.value) : MATIERES;
+    const optionsM = [{ id: "", nom: "— non classée —" }].concat(liste);
+    if (valeur && !optionsM.some(function (o) { return o.id === valeur; })) {
+      optionsM.push({ id: valeur, nom: infoMatiere(valeur).nom });
+    }
+    remplirSelect(matiere, optionsM, valeur);
   }
-  remplirSelect(matiere, optionsM, mActuelle);
+  remplirMatieresEditeur(mActuelle);
+  niveau.addEventListener("change", function () {
+    remplirMatieresEditeur(matiere.value);
+  });
   zone.appendChild(matiere);
 
   const bInfos = el("button", "btn vert petit", "💾 Enregistrer le titre et le classement");
@@ -683,6 +706,20 @@ function carteQuestion(q, i, vise, nouvelle) {
   const expl = el("textarea", "court");
   expl.value = q.expl || "";
   carte.appendChild(expl);
+
+  // Aperçu : les formules s'affichent comme dans l'application
+  const apercu = el("div", "apercu-f");
+  function majApercu() {
+    const lignes = Array.prototype.slice.call(zoneChoix.children).map(function (l, k) {
+      return String.fromCharCode(65 + k) + ". " + htmlMath(l.querySelector("input[type=text]").value);
+    });
+    apercu.innerHTML =
+      "<b>Aperçu</b><br>" + htmlMath(texte.value) + "<br>" + lignes.join("<br>") +
+      (expl.value ? "<br>💡 " + htmlMath(expl.value) : "");
+  }
+  carte.addEventListener("input", majApercu);
+  carte.appendChild(apercu);
+  majApercu();
 
   const rangee = el("div", "rangee-btn");
   const bSauv = el("button", "mini ok", "💾 Enregistrer cette question");
@@ -1018,6 +1055,7 @@ async function verifier() {
     await chargerTout();
   } catch (e) {
     $("etat-acces").textContent = "✗ Tu n’es pas administrateur sur ce téléphone.";
+    $("aide-recup").hidden = false;
   }
 }
 
@@ -1025,7 +1063,15 @@ function preparerFiltres() {
   remplirSelect($("f-niveau"), [{ id: "", nom: "Tous les niveaux" }].concat(NIVEAUX).concat([{ id: "non", nom: "⚠️ Non classées" }]), "");
   remplirSelect($("f-matiere"), [{ id: "", nom: "Toutes les matières" }].concat(MATIERES), "");
   remplirSelect($("niveau"), NIVEAUX, "bepc");
-  remplirSelect($("matiere"), MATIERES.concat([{ id: "autre", nom: "Autre matière…" }]), "svt");
+  remplirMatieresImport("svt");
+}
+
+// Les matières proposées à l'import dépendent du niveau (Philosophie seulement au BAC)
+function remplirMatieresImport(valeur) {
+  const liste = matieresPourNiveau($("niveau").value).concat([{ id: "autre", nom: "Autre matière…" }]);
+  remplirSelect($("matiere"), liste, valeur);
+  if (valeur === undefined) $("matiere").value = liste[0].id;
+  $("matiere-autre").hidden = $("matiere").value !== "autre";
 }
 
 async function demarrer() {
@@ -1048,6 +1094,24 @@ $("btn-actualiser").addEventListener("click", chargerTout);
 $("btn-fermer-editeur").addEventListener("click", fermerEditeur);
 $("f-niveau").addEventListener("change", afficherCatalogue);
 $("f-matiere").addEventListener("change", afficherCatalogue);
+$("niveau").addEventListener("change", function () {
+  remplirMatieresImport($("matiere").value);
+});
+$("btn-copier-uid").addEventListener("click", function () {
+  const t = $("uid").textContent;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(t).then(
+      function () {
+        dire("Identifiant copié.");
+      },
+      function () {
+        dire("Copie impossible : touche longuement l’identifiant pour le copier.");
+      }
+    );
+  } else {
+    dire("Touche longuement l’identifiant pour le copier.");
+  }
+});
 $("matiere").addEventListener("change", function () {
   $("matiere-autre").hidden = $("matiere").value !== "autre";
 });
